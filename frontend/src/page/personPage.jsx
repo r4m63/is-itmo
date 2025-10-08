@@ -174,18 +174,29 @@ export default function PersonPage() {
             toast.warning("Выберите нового владельца");
             return;
         }
+        // NEW: запрет «сам на себя» на клиенте
+        if (reassignTo.id === activePerson.id) {
+            toast.warning("Нельзя переназначать на самого себя");
+            return;
+        }
+
         try {
             const res = await fetch(
                 `${API_BASE}/api/person/${activePerson.id}?reassignTo=${encodeURIComponent(reassignTo.id)}`,
                 { method: "DELETE", credentials: "include" }
             );
+
             if (!res.ok) {
-                const err = await res.json().catch(() => ({}));
-                toast.error(err.message || `Ошибка: ${res.status}`);
+                // NEW: аккуратно читаем сначала JSON, потом текст
+                let err = {};
+                try { err = await res.json(); } catch {
+                    try { err.message = await res.text(); } catch {}
+                }
+                toast.error(err?.message || `Ошибка: ${res.status}`);
                 return;
             }
+
             toast.success(`Переназначено на «${reassignTo.fullName}» и удалено`);
-            // сброс
             setNeedReassign(false);
             setRefCount(0);
             setReassignTo(null);
@@ -196,6 +207,7 @@ export default function PersonPage() {
             toast.error("Не удалось переназначить и удалить");
         }
     };
+
 
     const handleLogout = async () => {
         try {
