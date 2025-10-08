@@ -102,18 +102,40 @@ public class PersonService {
                 .orElseThrow(() -> new WebApplicationException(
                         "Person not found: " + personId, Response.Status.NOT_FOUND));
 
-        if (Objects.equals(personId, reassignTo)) {
-            throw new WebApplicationException("Нельзя переназначать на самого себя", Response.Status.BAD_REQUEST);
-        }
-        if (!personDao.existsById(reassignTo)) {
-            throw new WebApplicationException("Целевой владелец (reassignTo) не найден: " + reassignTo,
-                    Response.Status.BAD_REQUEST);
+        // 1) Считаем привязанные ТС
+        long refCount = vehicleDao.countByOwnerId(personId);
+
+        // 2) Если ТС есть, но reassignTo не передан — отдать 409, чтобы фронтенд показал выбор нового владельца
+        if (refCount > 0 && reassignTo == null) {
+            // Вернём JSON вида { code:"FK_CONSTRAINT", message:"...", refCount:N }
+            var entity = Map.of(
+                    "code", "FK_CONSTRAINT",
+                    "message", "Нельзя удалить — есть связанные транспортные средства",
+                    "refCount", refCount
+            );
+            throw new WebApplicationException(
+                    Response.status(Response.Status.CONFLICT).entity(entity).build()
+            );
         }
 
-        // переназначаем все ТС, затем удаляем владельца
-        vehicleDao.reassignOwner(personId, reassignTo);
+        // 3) Если требуется переназначение (есть ТС и reassignTo задан)
+        if (refCount > 0 && reassignTo != null) {
+            if (Objects.equals(personId, reassignTo)) {
+                throw new WebApplicationException(
+                        "Нельзя переназначать на самого себя", Response.Status.BAD_REQUEST);
+            }
+            if (!personDao.existsById(reassignTo)) {
+                throw new WebApplicationException(
+                        "Целевой владелец (reassignTo) не найден: " + reassignTo,
+                        Response.Status.BAD_REQUEST);
+            }
+            vehicleDao.reassignOwner(personId, reassignTo); // переназначаем все ТС
+        }
+
+        // 4) Теперь удаляем владельца (если ТС не было — просто удалится)
         personDao.deleteById(personId);
     }
+
 
 
     /** Удалить только если нет привязанных ТС, иначе вернуть 409 */
