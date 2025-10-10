@@ -55,7 +55,7 @@ public class PersonController {
     @Path("/{id}")
     public void delete(@PathParam("id") Long id,
                        @QueryParam("reassignTo") Long reassignTo) {
-        service.deletePerson(id, reassignTo); // при null и наличии ТС сервис вернёт 409
+        service.deletePerson(id, reassignTo);
     }
 
     @GET
@@ -67,9 +67,7 @@ public class PersonController {
         return service.searchShort(q, limit);
     }
 
-    /**
-     * Если нужен просто топ-N без q: /api/person/list?limit=50
-     */
+
     @GET
     @Path("/list")
     public List<PersonDto> list(@QueryParam("limit") @DefaultValue("50") int limit) {
