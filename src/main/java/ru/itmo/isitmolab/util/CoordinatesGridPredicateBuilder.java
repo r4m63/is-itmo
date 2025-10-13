@@ -1,4 +1,4 @@
-package ru.itmo.isitmolab.util.gridtable;
+package ru.itmo.isitmolab.util;
 
 import jakarta.persistence.criteria.*;
 import lombok.experimental.UtilityClass;
@@ -15,46 +15,19 @@ import static ru.itmo.isitmolab.util.gridtable.DateParsers.parseToLocalDate;
 
 
 @UtilityClass
-public final class GridTablePredicateBuilder {
-
+public class CoordinatesGridPredicateBuilder {
 
     public static Path<?> resolvePath(Root<?> root, String colId) {
         if (colId == null || colId.isBlank()) return root.get("id");
+        if (!colId.contains(".")) return root.get(colId);
 
         String[] parts = colId.split("\\.");
         Path<?> p = root;
         From<?, ?> from = root;
-
-        for (int i = 0; i < parts.length; i++) {
-            String part = parts[i];
-
-            boolean isLast = (i == parts.length - 1);
-            if (!isLast) {
-                Join<?, ?> existing = null;
-                for (Join<?, ?> j : from.getJoins()) {
-                    if (j.getAttribute() != null && j.getAttribute().getName().equals(part)) {
-                        existing = j;
-                        break;
-                    }
-                }
-                if (existing != null) {
-                    from = existing;
-                    p = from;
-                    continue;
-                }
-
-                try {
-                    from = from.join(part, JoinType.LEFT);
-                    p = from;
-                    continue;
-                } catch (IllegalArgumentException ignored) {
-                }
-            }
-
+        for (String part : parts) {
             p = p.get(part);
             if (p instanceof From<?, ?> f) from = f;
         }
-
         return p;
     }
 
@@ -67,7 +40,6 @@ public final class GridTablePredicateBuilder {
             @SuppressWarnings("unchecked")
             Map<String, Object> fm = (Map<String, Object>) entry.getValue();
             String filterType = (String) fm.get("filterType");
-
             Path<?> path = resolvePath(root, col);
 
             switch (String.valueOf(filterType)) {
@@ -96,7 +68,8 @@ public final class GridTablePredicateBuilder {
             case "startsWith" -> out.add(cb.like(exp, p + "%"));
             case "endsWith" -> out.add(cb.like(exp, "%" + p));
             case "notEqual" -> out.add(cb.notEqual(exp, p));
-            default -> { /* игнор */ }
+            default -> {
+            }
         }
     }
 
@@ -104,29 +77,24 @@ public final class GridTablePredicateBuilder {
         String type = (String) fm.get("type");
         Number f1 = toNumber(fm.get("filter"));
         Number f2 = toNumber(fm.get("filterTo"));
-
         Class<?> jt = path.getJavaType();
 
         if (jt == Integer.class || jt == Integer.TYPE) {
             addNumber(cb, out, type, path.as(Integer.class),
                     f1 != null ? f1.intValue() : null,
                     f2 != null ? f2.intValue() : null);
-
         } else if (jt == Long.class || jt == Long.TYPE) {
             addNumber(cb, out, type, path.as(Long.class),
                     f1 != null ? f1.longValue() : null,
                     f2 != null ? f2.longValue() : null);
-
-        } else if (jt == Float.class || jt == Float.TYPE) {
-            addNumber(cb, out, type, path.as(Float.class),
-                    f1 != null ? f1.floatValue() : null,
-                    f2 != null ? f2.floatValue() : null);
-
         } else if (jt == Double.class || jt == Double.TYPE) {
             addNumber(cb, out, type, path.as(Double.class),
                     f1 != null ? f1.doubleValue() : null,
                     f2 != null ? f2.doubleValue() : null);
-
+        } else if (jt == Float.class || jt == Float.TYPE) {
+            addNumber(cb, out, type, path.as(Float.class),
+                    f1 != null ? f1.floatValue() : null,
+                    f2 != null ? f2.floatValue() : null);
         } else if (jt == BigDecimal.class) {
             addNumber(cb, out, type, path.as(BigDecimal.class),
                     f1 != null ? new BigDecimal(f1.toString()) : null,
@@ -148,14 +116,11 @@ public final class GridTablePredicateBuilder {
             case "greaterThan" -> out.add(cb.greaterThan(num, v1));
             case "greaterThanOrEqual" -> out.add(cb.greaterThanOrEqualTo(num, v1));
             case "inRange" -> {
-                if (v1 != null && v2 != null) {
+                if (v1 != null && v2 != null)
                     out.add(cb.and(cb.greaterThanOrEqualTo(num, v1),
                             cb.lessThanOrEqualTo(num, v2)));
-                } else if (v1 != null) {
-                    out.add(cb.greaterThanOrEqualTo(num, v1));
-                } else if (v2 != null) {
-                    out.add(cb.lessThanOrEqualTo(num, v2));
-                }
+                else if (v1 != null) out.add(cb.greaterThanOrEqualTo(num, v1));
+                else if (v2 != null) out.add(cb.lessThanOrEqualTo(num, v2));
             }
             default -> {
             }

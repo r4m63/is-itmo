@@ -11,7 +11,7 @@ import {useNavigate} from "react-router-dom";
 import useAuthStore from "../store/auth.js";
 import {API_BASE} from "../../cfg.js";
 import VehicleTable from "../component/vehicleTable.jsx";
-import OwnerPicker from "../component/ownerPicker.jsx";
+import CoordinatesPicker from "../component/CoordinatesPicker.jsx";
 
 const VEHICLE_TYPES = ["CAR", "HELICOPTER", "MOTORCYCLE", "CHOPPER"];
 const FUEL_TYPES = ["KEROSENE", "MANPOWER", "NUCLEAR"];
@@ -23,8 +23,6 @@ export default function MainPage() {
     const [activeVehicle, setActiveVehicle] = useState(null);
 
     const [name, setName] = useState("");
-    const [coordX, setCoordX] = useState("");
-    const [coordY, setCoordY] = useState("");
     const [type, setType] = useState("");
     const [enginePower, setEnginePower] = useState("");
     const [numberOfWheels, setNumberOfWheels] = useState("");
@@ -33,9 +31,8 @@ export default function MainPage() {
     const [fuelConsumption, setFuelConsumption] = useState("");
     const [fuelType, setFuelType] = useState("");
 
-    // выбор владельца теперь через OwnerPicker
-    const [ownerId, setOwnerId] = useState("");
-    const [ownerName, setOwnerName] = useState("");
+    const [coordinatesId, setCoordinatesId] = useState(null);
+    const [coordinatesObj, setCoordinatesObj] = useState(null);
 
     const {isOpen, onOpen, onOpenChange} = useDisclosure();
 
@@ -78,9 +75,7 @@ export default function MainPage() {
                     openSocket();
                 }, retry);
             };
-            ws.onerror = () => {
-                try { ws.close(); } catch {}
-            };
+            ws.onerror = () => { try { ws.close(); } catch {} };
         };
 
         openSocket();
@@ -97,8 +92,6 @@ export default function MainPage() {
     const openNewVehicleModal = () => {
         setActiveVehicle(null);
         setName("");
-        setCoordX("");
-        setCoordY("");
         setType("");
         setEnginePower("");
         setNumberOfWheels("");
@@ -106,42 +99,54 @@ export default function MainPage() {
         setDistanceTravelled("");
         setFuelConsumption("");
         setFuelType("");
-        setOwnerId("");
-        setOwnerName("");
+        setCoordinatesId(null);
+        setCoordinatesObj(null);
         onOpen();
     };
 
     const openEditVehicleModal = async (vehicle) => {
         setActiveVehicle(vehicle);
-        setName(vehicle.name);
-        setCoordX(vehicle.coordinates?.x ?? "");
-        setCoordY(vehicle.coordinates?.y ?? "");
-        setType(vehicle.type);
+        setName(vehicle.name || "");
+        setType(vehicle.type || "");
         setEnginePower(vehicle.enginePower ?? "");
         setNumberOfWheels(vehicle.numberOfWheels ?? "");
         setCapacity(vehicle.capacity ?? "");
         setDistanceTravelled(vehicle.distanceTravelled ?? "");
         setFuelConsumption(vehicle.fuelConsumption ?? "");
-        setFuelType(vehicle.fuelType);
-        setOwnerId(vehicle.ownerId ? String(vehicle.ownerId) : "");
-        setOwnerName(vehicle.ownerName ?? "");
+        setFuelType(vehicle.fuelType || "");
+
+        const nested = vehicle.coordinates ?? null;
+
+        const flatX = vehicle.coordinatesX ?? vehicle.coordX ?? null;
+        const flatY = vehicle.coordinatesY ?? vehicle.coordY ?? null;
+
+        const coordId = vehicle.coordinatesId ?? nested?.id ?? null;
+
+        let c = null;
+        if (nested && (nested.x != null) && (nested.y != null)) {
+            c = { id: coordId ?? nested.id ?? null, x: nested.x, y: nested.y };
+        } else if (flatX != null && flatY != null) {
+            c = { id: coordId ?? null, x: flatX, y: flatY };
+        }
+
+        setCoordinatesId(c?.id ?? null);
+        setCoordinatesObj(c);
+
         onOpen();
     };
 
+
     function validate() {
         if (!name.trim()) return "Заполните name.";
-        if (coordX === "" || isNaN(Number(coordX))) return "Координата X должна быть числом.";
-        if (coordY === "" || isNaN(Number(coordY))) return "Координата Y должна быть числом.";
         if (!type) return "Выберите type.";
         if (!numberOfWheels || Number(numberOfWheels) <= 0) return "numberOfWheels должно быть > 0.";
         if (!fuelConsumption || Number(fuelConsumption) <= 0) return "fuelConsumption должно быть > 0.";
         if (!fuelType) return "Выберите fuelType.";
+        if (!coordinatesId) return "Выберите координаты (из справочника Coordinates).";
+
         if (enginePower !== "" && Number(enginePower) <= 0) return "enginePower должно быть > 0.";
         if (capacity !== "" && Number(capacity) <= 0) return "capacity должно быть > 0.";
         if (distanceTravelled !== "" && Number(distanceTravelled) <= 0) return "distanceTravelled должно быть > 0.";
-
-        const oid = Number(ownerId);
-        if (!Number.isFinite(oid) || oid <= 0) return "Выберите владельца (owner).";
         return null;
     }
 
@@ -152,19 +157,14 @@ export default function MainPage() {
         const payload = {
             id: activeVehicle?.id ?? null,
             name: name.trim(),
-            coordinates: {
-                x: coordX === "" ? null : Number(coordX),
-                y: coordY === "" ? null : Number(coordY),
-            },
-            type: type,
+            type,
             enginePower: enginePower === "" ? null : Number(enginePower),
             numberOfWheels: Number(numberOfWheels),
             capacity: capacity === "" ? null : Number(capacity),
             distanceTravelled: distanceTravelled === "" ? null : Number(distanceTravelled),
             fuelConsumption: Number(fuelConsumption),
-            fuelType: fuelType,
-
-            ownerId: Number(ownerId),
+            fuelType,
+            coordinatesId: Number(coordinatesId),
         };
 
         const isEdit = Boolean(activeVehicle?.id);
@@ -240,7 +240,10 @@ export default function MainPage() {
     };
 
     const {isOpen: isPresetOpen, onOpen: onPresetOpen, onOpenChange: onPresetOpenChange} = useDisclosure();
-    const [presetFuelGt, setPresetFuelGt] = useState("");
+
+    const [presetFuelGtCount, setPresetFuelGtCount] = useState("");
+    const [presetFuelGtList,  setPresetFuelGtList]  = useState("");
+
     const [presetType, setPresetType] = useState("");
     const [presetEngMin, setPresetEngMin] = useState("");
     const [presetEngMax, setPresetEngMax] = useState("");
@@ -267,7 +270,7 @@ export default function MainPage() {
     };
 
     const presetCountFuelGt = async () => {
-        const v = Number(presetFuelGt);
+        const v = Number(presetFuelGtCount);
         if (isNaN(v) || v <= 0) return toast.warning("Введите корректное значение топлива > 0");
         try {
             const res = await fetch(`${API_BASE}/api/vehicle/special/count-fuel-gt?v=${encodeURIComponent(v)}`, {
@@ -284,7 +287,7 @@ export default function MainPage() {
     };
 
     const presetListFuelGt = async () => {
-        const v = Number(presetFuelGt);
+        const v = Number(presetFuelGtList);
         if (!Number.isFinite(v) || v <= 0) return toast.warning("Введите корректное значение топлива > 0");
         try {
             const res = await fetch(`${API_BASE}/api/vehicle/special/list-fuel-gt?v=${encodeURIComponent(v)}`, {
@@ -339,14 +342,16 @@ export default function MainPage() {
         }
     };
 
-    const handleResetFilters = () => { tableControls?.clearFilters(); };
+    const handleResetFilters = () => {
+        tableControls?.clearFilters?.();
+    };
 
     return (
         <>
             <div className={styles.totalwrapp}>
                 <div className={styles.top}>
                     <div className={styles.left}>
-                        <h1 className={styles.title}>Таблица элементов</h1>
+                        <h1 className={styles.title}>Таблица транспортных средств</h1>
                         <div className={styles.btnWrapper}>
                             <Button color="primary" className={styles.control} onPress={openNewVehicleModal}>
                                 Добавить
@@ -357,8 +362,8 @@ export default function MainPage() {
                             <Button color="warning" className={styles.control} onPress={handleResetFilters}>
                                 Сбросить фильтры
                             </Button>
-                            <Button color="primary" className={styles.control} onPress={() => navigate("/person")}>
-                                Person
+                            <Button color="primary" className={styles.control} onPress={() => navigate("/coordinates")}>
+                                Coordinates
                             </Button>
                         </div>
                     </div>
@@ -394,34 +399,36 @@ export default function MainPage() {
                             </ModalHeader>
 
                             <ModalBody className={styles.postModalBody}>
-                                <Input label="Название" variant="bordered" value={name}
-                                       onChange={(e) => setName(e.target.value)} isRequired/>
-
-                                {/* новый выбор владельца */}
-                                <OwnerPicker
-                                    value={{ id: ownerId ? Number(ownerId) : null, fullName: ownerName || "" }}
-                                    onChange={(sel) => {
-                                        if (sel?.id) {
-                                            setOwnerId(String(sel.id));
-                                            setOwnerName(sel.fullName || "");
-                                        } else {
-                                            // пользователь не выбрал из подсказки
-                                            setOwnerId("");
-                                            setOwnerName(sel?.fullName || "");
-                                        }
-                                    }}
+                                <Input
+                                    label="Название"
+                                    variant="bordered"
+                                    value={name}
+                                    onChange={(e) => setName(e.target.value)}
+                                    isRequired
                                 />
 
-                                <div className="grid grid-cols-2 gap-3">
-                                    <Input type="number" label="Координата X" variant="bordered" value={coordX}
-                                           onChange={(e) => setCoordX(e.target.value)} isRequired/>
-                                    <Input type="number" label="Координата Y" variant="bordered" value={coordY}
-                                           onChange={(e) => setCoordY(e.target.value)} isRequired/>
-                                </div>
+                                <CoordinatesPicker
+                                    value={coordinatesObj}
+                                    onChange={(sel) => {
+                                        if (sel?.id) {
+                                            setCoordinatesId(sel.id);
+                                            setCoordinatesObj(sel); // {id,x,y}
+                                        } else {
+                                            setCoordinatesId(null);
+                                            setCoordinatesObj(null);
+                                        }
+                                    }}
+                                    required={true}
+                                    errorText="Выберите координаты из списка"
+                                />
 
-                                <Select label="Тип" variant="bordered"
-                                        selectedKeys={type ? [type] : []}
-                                        onChange={(e) => setType(e.target.value)} isRequired>
+                                <Select
+                                    label="Тип"
+                                    variant="bordered"
+                                    selectedKeys={type ? [type] : []}
+                                    onChange={(e) => setType(e.target.value)}
+                                    isRequired
+                                >
                                     {VEHICLE_TYPES.map((t) => (
                                         <SelectItem key={t} value={t}>{t}</SelectItem>
                                     ))}
@@ -429,8 +436,7 @@ export default function MainPage() {
 
                                 <div className="grid grid-cols-2 gap-3">
                                     <Input type="number" label="Мощность двигателя" variant="bordered"
-                                           value={enginePower} onChange={(e) => setEnginePower(e.target.value)}
-                                           min={0}/>
+                                           value={enginePower} onChange={(e) => setEnginePower(e.target.value)} min={0}/>
                                     <Input type="number" label="Кол-во колёс" variant="bordered" value={numberOfWheels}
                                            onChange={(e) => setNumberOfWheels(e.target.value)} isRequired min={1}/>
                                 </div>
@@ -444,8 +450,7 @@ export default function MainPage() {
 
                                 <div className="grid grid-cols-2 gap-3">
                                     <Input type="number" label="Расход топлива" variant="bordered"
-                                           value={fuelConsumption} onChange={(e) => setFuelConsumption(e.target.value)}
-                                           isRequired/>
+                                           value={fuelConsumption} onChange={(e) => setFuelConsumption(e.target.value)} isRequired/>
                                     <Select label="Тип топлива" variant="bordered"
                                             selectedKeys={fuelType ? [fuelType] : []}
                                             onChange={(e) => setFuelType(e.target.value)} isRequired>
@@ -493,8 +498,12 @@ export default function MainPage() {
                                         Вернуть количество объектов, у которых fuelConsumption &gt; X
                                     </div>
                                     <div className="flex items-center gap-3">
-                                        <Input label="X (fuelConsumption)" type="number" value={presetFuelGt}
-                                               onChange={(e) => setPresetFuelGt(e.target.value)}/>
+                                        <Input
+                                            label="X (fuelConsumption)"
+                                            type="number"
+                                            value={presetFuelGtCount}
+                                            onChange={(e) => setPresetFuelGtCount(e.target.value)}
+                                        />
                                         <Button onPress={presetCountFuelGt}>Выполнить</Button>
                                     </div>
                                 </div>
@@ -504,18 +513,27 @@ export default function MainPage() {
                                         Вернуть массив объектов, у которых fuelConsumption &gt; X
                                     </div>
                                     <div className="flex items-center gap-3">
-                                        <Input label="X (fuelConsumption)" type="number" value={presetFuelGt}
-                                               onChange={(e) => setPresetFuelGt(e.target.value)}/>
+                                        <Input
+                                            label="X (fuelConsumption)"
+                                            type="number"
+                                            value={presetFuelGtList}
+                                            onChange={(e) => setPresetFuelGtList(e.target.value)}
+                                        />
                                         <Button onPress={presetListFuelGt}>Выполнить</Button>
                                     </div>
                                 </div>
 
                                 <div className="space-y-2">
-                                    <div className="text-sm font-medium opacity-80">Найти все транспортные средства заданного типа</div>
+                                    <div className="text-sm font-medium opacity-80">
+                                        Найти все транспортные средства заданного типа
+                                    </div>
                                     <div className="flex items-center gap-3">
-                                        <Select label="Тип ТС" selectedKeys={presetType ? [presetType] : []}
-                                                onChange={(e) => setPresetType(e.target.value)}
-                                                className="min-w-[180px]">
+                                        <Select
+                                            label="Тип ТС"
+                                            selectedKeys={presetType ? [presetType] : []}
+                                            onChange={(e) => setPresetType(e.target.value)}
+                                            className="min-w-[180px]"
+                                        >
                                             {VEHICLE_TYPES.map(t => <SelectItem key={t} value={t}>{t}</SelectItem>)}
                                         </Select>
                                         <Button onPress={presetListByType}>Выполнить</Button>
@@ -543,6 +561,7 @@ export default function MainPage() {
                     )}
                 </ModalContent>
             </Modal>
+
         </>
     );
 }

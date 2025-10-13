@@ -1,14 +1,14 @@
 -- Usage:
--- psql "postgresql://user:pass@host:port/db_name" -v seed_count=50 -v seed_persons=10 -f sql/seed_vehicle.sql
+-- psql "postgresql://user:pass@host:port/db_name" -v seed_count=50 -v seed_coords=60 -f sql/seed_vehicle.sql
 
 \if :{?seed_count}
 \else
 \set seed_count 50
 \endif
 
-\if :{?seed_persons}
+\if :{?seed_coords}
 \else
-\set seed_persons 10
+\set seed_coords 60
 \endif
 
 BEGIN;
@@ -18,35 +18,39 @@ INSERT INTO admin (login, pass_hash, salt)
 VALUES ('seed_admin', 'seed_pass_hash_for_demo', 'seed_salt_for_demo')
 ON CONFLICT (login) DO NOTHING;
 
--- 2) Создаём N владельцев для этого админа
-WITH sa AS (SELECT id FROM admin WHERE login = 'seed_admin' LIMIT 1)
-INSERT INTO person (full_name, admin_id)
-SELECT 'Person #' || gs::text, (SELECT id FROM sa)
-FROM generate_series(1, :seed_persons) AS gs;
+-- 2) Подготовим справочник координат (N штук).
+--    Требуется UNIQUE (x, y) в таблице coordinates (рекомендуется иметь такой индекс/ограничение).
+--    Если уникального индекса нет, замените ON CONFLICT на проверку через NOT EXISTS.
+WITH to_ins AS (
+  SELECT
+    -- X <= 613 (1 знак после запятой)
+    ROUND((random() * 613)::numeric, 1)::float8 AS x,
+    -- Y <= 962 (1 знак после запятой)
+    ROUND((random() * 962)::numeric, 1)::float4 AS y
+  FROM generate_series(1, :seed_coords)
+)
+INSERT INTO coordinates (x, y)
+SELECT x, y
+FROM to_ins
+ON CONFLICT (x, y) DO NOTHING;
 
--- 2.1) Гарантируем, что хотя бы один владелец существует
-WITH sa AS (SELECT id FROM admin WHERE login = 'seed_admin' LIMIT 1)
-INSERT INTO person (full_name, admin_id)
-SELECT 'Person #1', (SELECT id FROM sa)
-WHERE NOT EXISTS (
-  SELECT 1 FROM person p WHERE p.admin_id = (SELECT id FROM sa)
-);
+-- 2.1) Гарантируем, что в таблице coordinates есть хотя бы одна запись
+INSERT INTO coordinates (x, y)
+SELECT 0.0::float8, 0.0::float4
+WHERE NOT EXISTS (SELECT 1 FROM coordinates);
 
--- 3) Вставляем машины и равномерно распределяем по владельцам seed_admin
-WITH sa AS (
-  SELECT id FROM admin WHERE login = 'seed_admin' LIMIT 1
-),
-pp AS (
-  SELECT p.id,
-         row_number() OVER (ORDER BY p.id) AS rn,
+-- 3) Вставляем машины и равномерно распределяем по справочнику coordinates
+WITH coords AS (
+  SELECT c.id,
+         row_number() OVER (ORDER BY c.id) AS rn,
          count(*)      OVER ()            AS cnt
-  FROM person p
-  WHERE p.admin_id = (SELECT id FROM sa)
+  FROM coordinates c
+),
+sa AS (
+  SELECT id FROM admin WHERE login = 'seed_admin' LIMIT 1
 )
 INSERT INTO vehicle (
     name,
-    coordinates_x,
-    coordinates_y,
     type,
     engine_power,
     number_of_wheels,
@@ -55,16 +59,10 @@ INSERT INTO vehicle (
     fuel_consumption,
     fuel_type,
     admin_id,
-    owner_id
+    coordinates_id
 )
 SELECT
     'Seed #' || gs::text,
-
-    -- X <= 613 (1 знак после запятой)
-    ROUND((random() * 613)::numeric, 1)::float8,
-
-    -- Y <= 962 (1 знак после запятой)
-    ROUND((random() * 962)::numeric, 1)::float4,
 
     -- type
     (ARRAY['CAR','HELICOPTER','MOTORCYCLE','CHOPPER'])[
@@ -100,11 +98,11 @@ SELECT
     -- admin_id
     (SELECT id FROM sa),
 
-    -- owner_id: равномерно по кругу
+    -- coordinates_id: равномерно по кругу по списку координат
     (
-      SELECT p2.id
-      FROM pp p2
-      WHERE p2.rn = ((gs - 1) % p2.cnt) + 1
+      SELECT c2.id
+      FROM coords c2
+      WHERE c2.rn = ((gs - 1) % c2.cnt) + 1
       LIMIT 1
     )
 FROM generate_series(1, :seed_count) AS gs;

@@ -1,11 +1,7 @@
 package ru.itmo.isitmolab.model;
 
 import jakarta.persistence.*;
-import lombok.AllArgsConstructor;
-import lombok.Builder;
-import lombok.Data;
-import lombok.NoArgsConstructor;
-
+import lombok.*;
 import java.time.LocalDateTime;
 
 @Data
@@ -15,7 +11,6 @@ import java.time.LocalDateTime;
 @Entity
 @Table(name = "admin")
 public class Admin {
-
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
@@ -29,7 +24,7 @@ public class Admin {
     @Column(name = "salt", nullable = false)
     private String salt;
 
-    @Column(name = "creation_time", nullable = false, updatable = false, columnDefinition = "timestamp default now()")
+    @Column(name = "creation_time", nullable = false, updatable = false,
+            columnDefinition = "timestamp default now()")
     private LocalDateTime creationTime;
-
 }

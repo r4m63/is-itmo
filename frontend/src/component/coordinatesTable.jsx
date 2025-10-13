@@ -7,7 +7,7 @@ import {API_BASE} from "../../cfg.js";
 
 ModuleRegistry.registerModules([AllCommunityModule]);
 
-export const personTableTheme = themeQuartz
+export const coordinatesTableTheme = themeQuartz
     .withPart(iconSetMaterial)
     .withPart(colorSchemeDark)
     .withParams({
@@ -23,7 +23,7 @@ export const personTableTheme = themeQuartz
         selectedRowBackgroundColor: "#1e3a8a",
     });
 
-export default function PersonTable({onOpenEditPersonModal, onReadyRefresh, onReadyControls}) {
+export default function CoordinatesTable({onOpenEditCoordinatesModal, onReadyRefresh, onReadyControls}) {
     const gridApiRef = useRef(null);
 
     const colDefs = useMemo(() => ([
@@ -52,49 +52,41 @@ export default function PersonTable({onOpenEditPersonModal, onReadyRefresh, onRe
                         borderRadius: 5,
                         cursor: "pointer"
                     }}
-                    onClick={() => onOpenEditPersonModal?.(p.data)}
+                    onClick={() => onOpenEditCoordinatesModal?.(p.data)}
                 >
                     Edit
                 </button>
             ),
         },
         {
-            headerName: "Full Name",
-            field: "fullName",
-            colId: "fullName",
-            sortable: true,
-            filter: "agTextColumnFilter",
-            floatingFilter: true
-        },
-        {
-            headerName: "Admin ID",
-            field: "adminId",
-            colId: "admin.id",
-            width: 120,
+            headerName: "X",
+            field: "x",
+            colId: "x",
+            width: 140,
             sortable: true,
             filter: "agNumberColumnFilter",
-            floatingFilter: true
+            floatingFilter: true,
+            valueFormatter: (p) => p.value ?? ""
         },
         {
-            headerName: "Created",
-            field: "creationDate",
-            colId: "creationTime",
-            width: 190,
+            headerName: "Y",
+            field: "y",
+            colId: "y",
+            width: 140,
             sortable: true,
-            filter: "agDateColumnFilter",
+            filter: "agNumberColumnFilter",
             floatingFilter: true,
-            valueFormatter: (p) => p.value ? new Date(p.value).toLocaleString() : "",
+            valueFormatter: (p) => p.value ?? ""
         },
         {
             headerName: "Vehicles",
             field: "vehiclesCount",
-            // colId: "vehiclesCount",
             width: 130,
             sortable: false,
             filter: false,
             floatingFilter: false
         },
-    ]), [onOpenEditPersonModal]);
+    ]), [onOpenEditCoordinatesModal]);
 
     const mapSortModel = (sm = []) => sm.map(s => ({colId: s.colId, sort: s.sort}));
 
@@ -108,7 +100,7 @@ export default function PersonTable({onOpenEditPersonModal, onReadyRefresh, onRe
                     filterModel: params.filterModel || {},
                 };
 
-                const res = await fetch(`${API_BASE}/api/person/query`, {
+                const res = await fetch(`${API_BASE}/api/coordinates/query`, {
                     method: "POST",
                     credentials: "include",
                     headers: {"Content-Type": "application/json", "Accept": "application/json"},
@@ -155,9 +147,17 @@ export default function PersonTable({onOpenEditPersonModal, onReadyRefresh, onRe
                 api.purgeInfiniteCache();
                 api.ensureIndexVisible(0);
             },
-            filterByName: (txt) => {
+            filterByX: (xVal) => {
                 api.setFilterModel({
-                    fullName: {filterType: "text", type: "contains", filter: String(txt || "")}
+                    x: {filterType: "number", type: "equals", filter: xVal}
+                });
+                api.onFilterChanged();
+                api.purgeInfiniteCache();
+                api.ensureIndexVisible(0);
+            },
+            filterByY: (yVal) => {
+                api.setFilterModel({
+                    y: {filterType: "number", type: "equals", filter: yVal}
                 });
                 api.onFilterChanged();
                 api.purgeInfiniteCache();
@@ -186,7 +186,7 @@ export default function PersonTable({onOpenEditPersonModal, onReadyRefresh, onRe
     return (
         <div style={{minWidth: "100%", height: 600}}>
             <AgGridReact
-                theme={personTableTheme}
+                theme={coordinatesTableTheme}
                 columnDefs={colDefs}
                 rowModelType="infinite"
                 cacheBlockSize={50}

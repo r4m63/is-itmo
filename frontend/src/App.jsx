@@ -6,7 +6,7 @@ import NotFoundPage from "./page/notFoundPage.jsx";
 import {toast} from "sonner";
 import useAuthStore from "./store/auth.js";
 import {API_BASE} from "../cfg.js";
-import PersonPage from "./page/personPage.jsx";
+import CoordinatesPage from "./page/coordinatesPage.jsx";
 
 export default function App() {
 
@@ -74,11 +74,11 @@ export default function App() {
                     // <MainPage/>
                 }/>
 
-                <Route path="/person" element={
+                <Route path="/coordinates" element={
                     <PrivateRoute>
-                        <PersonPage/>
+                        <CoordinatesPage/>
                     </PrivateRoute>
-                    // <PersonPage/>
+                    // <CoordinatesPage/>
                 }/>
 
                 {/* 404 */}

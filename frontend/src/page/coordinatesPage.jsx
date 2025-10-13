@@ -10,39 +10,38 @@ import styles from "./mainPage.module.css";
 import {useNavigate} from "react-router-dom";
 import useAuthStore from "../store/auth.js";
 import {API_BASE} from "../../cfg.js";
-import PersonTable from "../component/personTable.jsx";
-import OwnerPicker from "../component/OwnerPicker.jsx";
+import CoordinatesTable from "../component/coordinatesTable.jsx";
+import CoordinatesPicker from "../component/CoordinatesPicker.jsx";
 
-export default function PersonPage() {
+export default function CoordinatesPage() {
     const navigate = useNavigate();
     const {setIsAuthed} = useAuthStore();
 
-    const [activePerson, setActivePerson] = useState(null);
-    const [fullName, setFullName] = useState("");
+    const [activeCoordinates, setActiveCoordinates] = useState(null);
+    const [x, setX] = useState("");
+    const [y, setY] = useState("");
 
-    // reassign-in-modal state
     const [needReassign, setNeedReassign] = useState(false);
     const [refCount, setRefCount] = useState(0);
-    const [reassignTo, setReassignTo] = useState(null); // {id, fullName}
+    const [reassignTo, setReassignTo] = useState(null); // {id, x, y}
 
     const {isOpen, onOpen, onOpenChange} = useDisclosure();
 
     const [tableControls, setTableControls] = useState(null);
     const [refreshGrid, setRefreshGrid] = useState(() => () => {});
 
-    // (опционально) WS
     const wsRef = useRef(null);
     const reconnectTimerRef = useRef(null);
     const WS_URL = useMemo(() => {
         try {
             const u = new URL(API_BASE);
             const wsProto = u.protocol === "https:" ? "wss:" : "ws:";
-            return `${wsProto}//${u.host}${u.pathname.replace(/\/+$/, '')}/ws/persons`;
+            return `${wsProto}//${u.host}${u.pathname.replace(/\/+$/, '')}/ws/coordinates`;
         } catch {
             const loc = window.location;
             const wsProto = loc.protocol === "https:" ? "wss:" : "ws:";
             const base = API_BASE?.startsWith("/") ? API_BASE : `/${API_BASE || ""}`;
-            return `${wsProto}//${loc.host}${base.replace(/\/+$/, '')}/ws/persons`;
+            return `${wsProto}//${loc.host}${base.replace(/\/+$/, '')}/ws/coordinates`;
         }
     }, []);
 
@@ -80,19 +79,20 @@ export default function PersonPage() {
         };
     }, [connectWs]);
 
-    const openNewPersonModal = () => {
-        setActivePerson(null);
-        setFullName("");
-        // сбрасываем reassign-состояния
+    const openNewCoordinatesModal = () => {
+        setActiveCoordinates(null);
+        setX("");
+        setY("");
         setNeedReassign(false);
         setRefCount(0);
         setReassignTo(null);
         onOpen();
     };
 
-    const openEditPersonModal = async (person) => {
-        setActivePerson(person);
-        setFullName(person.fullName || "");
+    const openEditCoordinatesModal = async (coord) => {
+        setActiveCoordinates(coord);
+        setX(coord.x ?? "");
+        setY(coord.y ?? "");
         setNeedReassign(false);
         setRefCount(0);
         setReassignTo(null);
@@ -100,7 +100,10 @@ export default function PersonPage() {
     };
 
     function validate() {
-        if (!fullName.trim()) return "Заполните fullName.";
+        if (x === "" || x === null) return "Заполните X.";
+        if (y === "" || y === null) return "Заполните Y.";
+        if (isNaN(Number(x))) return "X должен быть числом.";
+        if (isNaN(Number(y))) return "Y должен быть числом.";
         return null;
     }
 
@@ -108,14 +111,14 @@ export default function PersonPage() {
         const err = validate();
         if (err) return toast.warning(err);
 
-        const isEdit = Boolean(activePerson?.id);
+        const isEdit = Boolean(activeCoordinates?.id);
         const url = isEdit
-            ? `${API_BASE}/api/person/${activePerson.id}`
-            : `${API_BASE}/api/person`;
+            ? `${API_BASE}/api/coordinates/${activeCoordinates.id}`
+            : `${API_BASE}/api/coordinates`;
 
         const payload = isEdit
-            ? { id: activePerson.id, fullName: fullName.trim() }
-            : { fullName: fullName.trim() };
+            ? { id: activeCoordinates.id, x: Number(x), y: Number(y) }
+            : { x: Number(x), y: Number(y) };
 
         try {
             const res = await fetch(url, {
@@ -139,11 +142,10 @@ export default function PersonPage() {
         }
     };
 
-    // Удаление с возможным «переназначением внутри этой же модалки»
     const handleDelete = async () => {
-        if (!activePerson?.id) return;
+        if (!activeCoordinates?.id) return;
         try {
-            const res = await fetch(`${API_BASE}/api/person/${activePerson.id}`, {
+            const res = await fetch(`${API_BASE}/api/coordinates/${activeCoordinates.id}`, {
                 method: "DELETE",
                 credentials: "include",
             });
@@ -154,9 +156,8 @@ export default function PersonPage() {
                 return;
             }
             const err = await res.json().catch(() => ({}));
-            if (res.status === 409 && (err.code === "FK_CONSTRAINT" || /привязано/i.test(err.message || ""))) {
+            if (res.status === 409 && (err.code === "FK_CONSTRAINT" || /Нельзя удалить/i.test(err.message || ""))) {
                 toast.error(err.message || "Нельзя удалить — есть связанные транспортные средства");
-                // показываем в ЭТОЙ модалке блок переназначения
                 setNeedReassign(true);
                 setRefCount(err.refCount ?? 0);
                 return;
@@ -169,25 +170,23 @@ export default function PersonPage() {
     };
 
     const handleConfirmReassignAndDelete = async () => {
-        if (!activePerson?.id) return;
+        if (!activeCoordinates?.id) return;
         if (!reassignTo?.id) {
-            toast.warning("Выберите нового владельца");
+            toast.warning("Выберите целевые координаты");
             return;
         }
-        // NEW: запрет «сам на себя» на клиенте
-        if (reassignTo.id === activePerson.id) {
-            toast.warning("Нельзя переназначать на самого себя");
+        if (reassignTo.id === activeCoordinates.id) {
+            toast.warning("Нельзя переназначать на те же координаты");
             return;
         }
 
         try {
             const res = await fetch(
-                `${API_BASE}/api/person/${activePerson.id}?reassignTo=${encodeURIComponent(reassignTo.id)}`,
+                `${API_BASE}/api/coordinates/${activeCoordinates.id}?reassignTo=${encodeURIComponent(reassignTo.id)}`,
                 { method: "DELETE", credentials: "include" }
             );
 
             if (!res.ok) {
-                // NEW: аккуратно читаем сначала JSON, потом текст
                 let err = {};
                 try { err = await res.json(); } catch {
                     try { err.message = await res.text(); } catch {}
@@ -196,7 +195,7 @@ export default function PersonPage() {
                 return;
             }
 
-            toast.success(`Переназначено на «${reassignTo.fullName}» и удалено`);
+            toast.success(`Переназначено на (${reassignTo.x}; ${reassignTo.y}) и удалено`);
             setNeedReassign(false);
             setRefCount(0);
             setReassignTo(null);
@@ -207,7 +206,6 @@ export default function PersonPage() {
             toast.error("Не удалось переназначить и удалить");
         }
     };
-
 
     const handleLogout = async () => {
         try {
@@ -233,9 +231,9 @@ export default function PersonPage() {
             <div className={styles.totalwrapp}>
                 <div className={styles.top}>
                     <div className={styles.left}>
-                        <h1 className={styles.title}>Справочник людей (Person)</h1>
+                        <h1 className={styles.title}>Справочник координат (Coordinates)</h1>
                         <div className={styles.btnWrapper}>
-                            <Button color="primary" className={styles.control} onPress={openNewPersonModal}>
+                            <Button color="primary" className={styles.control} onPress={openNewCoordinatesModal}>
                                 Добавить
                             </Button>
                             <Button color="warning" className={styles.control} onPress={handleResetFilters}>
@@ -268,8 +266,8 @@ export default function PersonPage() {
             </div>
 
             <div style={{width: "95%", margin: "24px auto"}}>
-                <PersonTable
-                    onOpenEditPersonModal={openEditPersonModal}
+                <CoordinatesTable
+                    onOpenEditCoordinatesModal={openEditCoordinatesModal}
                     onReadyRefresh={(fn) => setRefreshGrid(() => fn)}
                     onReadyControls={(controls) => setTableControls(controls)}
                 />
@@ -278,7 +276,6 @@ export default function PersonPage() {
             <Modal isOpen={isOpen} onOpenChange={(v) => {
                 onOpenChange(v);
                 if (!v) {
-                    // сбрасываем «режим переназначения» при закрытии
                     setNeedReassign(false);
                     setRefCount(0);
                     setReassignTo(null);
@@ -288,19 +285,30 @@ export default function PersonPage() {
                     {(close) => (
                         <>
                             <ModalHeader>
-                                {activePerson ? "Редактировать Person" : "Новый Person"}
+                                {activeCoordinates ? "Редактировать Coordinates" : "Новые Coordinates"}
                             </ModalHeader>
 
                             <ModalBody className={styles.postModalBody}>
-                                <Input
-                                    label="Full Name"
-                                    variant="bordered"
-                                    value={fullName}
-                                    onChange={(e) => setFullName(e.target.value)}
-                                    isRequired
-                                />
+                                <div className="grid grid-cols-2 gap-3">
+                                    <Input
+                                        label="X"
+                                        variant="bordered"
+                                        value={String(x)}
+                                        onChange={(e) => setX(e.target.value)}
+                                        isRequired
+                                        type="number"
+                                    />
+                                    <Input
+                                        label="Y"
+                                        variant="bordered"
+                                        value={String(y)}
+                                        onChange={(e) => setY(e.target.value)}
+                                        isRequired
+                                        type="number"
+                                    />
+                                </div>
 
-                                {activePerson && !needReassign && (
+                                {activeCoordinates && !needReassign && (
                                     <div style={{marginTop: 12}}>
                                         <Button color="danger" variant="solid" onPress={handleDelete}>
                                             Удалить
@@ -308,21 +316,20 @@ export default function PersonPage() {
                                     </div>
                                 )}
 
-                                {/* Блок «переназначить» появляется после 409 */}
                                 {needReassign && (
                                     <div className="mt-4 space-y-3">
                                         <div className="text-sm opacity-80">
-                                            Нельзя удалить владельца
-                                            {activePerson?.fullName ? <> «<b>{activePerson.fullName}</b>»</> : null}
-                                            {typeof refCount === "number" ? <>: к нему привязано <b>{refCount}</b> ТС.</> : "."}
+                                            Нельзя удалить координаты
+                                            {activeCoordinates ? <> (<b>{activeCoordinates.x}</b>; <b>{activeCoordinates.y}</b>)</> : null}
+                                            {typeof refCount === "number" ? <>: к ним привязано <b>{refCount}</b> ТС.</> : "."}
                                             <br/>
-                                            Выберите нового владельца, на которого будут переназначены все ТС.
+                                            Выберите другие координаты, на которые будут переназначены все ТС.
                                         </div>
 
-                                        <OwnerPicker
+                                        <CoordinatesPicker
                                             required
-                                            excludeId={activePerson?.id}
-                                            value={reassignTo || { id: null, fullName: "" }}
+                                            excludeId={activeCoordinates?.id}
+                                            value={reassignTo || { id: null, x: "", y: "" }}
                                             onChange={(sel) => setReassignTo(sel?.id ? sel : null)}
                                         />
 

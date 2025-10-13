@@ -147,7 +147,6 @@
     }
 }
 
-/* ---------- ≤ 768 px  ---------- */
 @media (max-width: 768px) {
     .totalwrapp {
         padding: 24px;
@@ -187,7 +186,6 @@
 
 }
 
-/* ---------- ≤ 480 px  ---------- */
 @media (max-width: 480px) {
     .totalwrapp {
         padding: 16px;
@@ -215,9 +213,6 @@
 }
 
 
-/**/
-/* === VAUL DRAWER (простая версия) === */
-/* Overlay: плавное появление/исчезновение */
 .drawerOverlay {
     position: fixed;
     inset: 0;
@@ -235,7 +230,6 @@
     opacity: 0;
 }
 
-/* Контент: только transition, без keyframes — свайп будет работать */
 .drawerContent {
     position: fixed;
     left: 0;

@@ -15,7 +15,6 @@ import ru.itmo.isitmolab.service.VehicleService;
 import java.util.List;
 import java.util.Map;
 
-
 @Path("/vehicle")
 @Consumes(MediaType.APPLICATION_JSON)
 @Produces(MediaType.APPLICATION_JSON)
@@ -47,9 +46,7 @@ public class VehicleController {
     @Path("/{id}")
     public Response getVehicle(@PathParam("id") Long id) {
         var res = vehicleService.getVehicleById(id);
-        return Response.status(Response.Status.OK)
-                .entity(res)
-                .build();
+        return Response.ok(res).build();
     }
 
     @DELETE
@@ -75,22 +72,10 @@ public class VehicleController {
         return Response.ok(result).build();
     }
 
-
-//    public record IdName(Long id, String name) {}
-//
-//    /** Список машин по владельцу (минимальный dto: id, name) */
-//    @GET
-//    @Path("/owned-by/{ownerId}")
-//    public List<IdName> listByOwner(@PathParam("ownerId") Long ownerId) {
-//        return vehicleService.findByOwner(ownerId).stream()
-//                .map(v -> new IdName(v.getId(), v.getName()))
-//                .toList();
-//    }
-
     @GET
-    @Path("/owned-by/{ownerId}")
-    public List<Map<String, Object>> listByOwner(@PathParam("ownerId") Long ownerId) {
-        return vehicleService.findByOwner(ownerId).stream()
+    @Path("/at-coordinates/{coordinatesId}")
+    public List<Map<String, Object>> listByCoordinates(@PathParam("coordinatesId") Long coordinatesId) {
+        return vehicleService.findByCoordinates(coordinatesId).stream()
                 .map(v -> Map.<String, Object>of(
                         "id", v.getId(),
                         "name", v.getName()
@@ -98,14 +83,12 @@ public class VehicleController {
                 .toList();
     }
 
-
-
-    @POST @Path("/reassign-owner-bulk")
-    public Map<String, Object> reassignOwnerBulk(Map<String, Object> body) {
-        Long fromOwnerId = body.get("fromOwnerId") == null ? null : Long.valueOf(body.get("fromOwnerId").toString());
-        Long toOwnerId   = body.get("toOwnerId")   == null ? null : Long.valueOf(body.get("toOwnerId").toString());
-        int updated = vehicleService.reassignOwnerBulk(fromOwnerId, toOwnerId);
+    @POST
+    @Path("/reassign-coordinates-bulk")
+    public Map<String, Object> reassignCoordinatesBulk(Map<String, Object> body) {
+        Long fromCoordId = body.get("fromCoordinatesId") == null ? null : Long.valueOf(body.get("fromCoordinatesId").toString());
+        Long toCoordId   = body.get("toCoordinatesId")   == null ? null : Long.valueOf(body.get("toCoordinatesId").toString());
+        int updated = vehicleService.reassignCoordinatesBulk(fromCoordId, toCoordId);
         return Map.of("updated", updated);
     }
-
 }

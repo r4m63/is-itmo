@@ -1,17 +1,14 @@
 package ru.itmo.isitmolab.model;
 
 import jakarta.persistence.*;
-import jakarta.validation.constraints.NotBlank;
-import jakarta.validation.constraints.NotNull;
-import jakarta.validation.constraints.Positive;
+import jakarta.validation.constraints.*;
 import lombok.*;
-
 import java.time.LocalDateTime;
 
 @NamedEntityGraph(
-        name = "Vehicle.withOwnerAdmin",
+        name = "Vehicle.withCoordinatesAdmin",
         attributeNodes = {
-                @NamedAttributeNode("owner"),
+                @NamedAttributeNode("coordinates"),
                 @NamedAttributeNode("admin")
         }
 )
@@ -32,15 +29,8 @@ public class Vehicle {
     @Column(nullable = false)
     private String name;
 
-    @NotNull
-    @Embedded
-    @AttributeOverrides({
-            @AttributeOverride(name = "x", column = @Column(name = "coordinates_x", nullable = false)),
-            @AttributeOverride(name = "y", column = @Column(name = "coordinates_y", nullable = false))
-    })
-    private Coordinates coordinates;
-
-    @Column(name = "creation_time", nullable = false, updatable = false, columnDefinition = "timestamp default now()")
+    @Column(name = "creation_time", nullable = false, updatable = false,
+            columnDefinition = "timestamp default now()")
     private LocalDateTime creationTime;
 
     @NotNull
@@ -73,12 +63,14 @@ public class Vehicle {
     private FuelType fuelType;
 
     @ManyToOne(optional = false, fetch = FetchType.LAZY)
-    @JoinColumn(name = "admin_id", nullable = false, foreignKey = @ForeignKey(name = "vehicle_admin_id_fkey"))
+    @JoinColumn(name = "admin_id", nullable = false,
+            foreignKey = @ForeignKey(name = "vehicle_admin_id_fkey"))
     private Admin admin;
 
     @ManyToOne(optional = false, fetch = FetchType.LAZY)
-    @JoinColumn(name = "owner_id", nullable = false, foreignKey = @ForeignKey(name = "vehicle_owner_id_fkey"))
-    private Person owner;
+    @JoinColumn(name = "coordinates_id", nullable = false,
+            foreignKey = @ForeignKey(name = "vehicle_coordinates_id_fkey"))
+    private Coordinates coordinates;
 
     @PrePersist
     void onCreate() {
@@ -86,5 +78,4 @@ public class Vehicle {
             creationTime = LocalDateTime.now();
         }
     }
-
 }
