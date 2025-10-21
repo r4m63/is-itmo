@@ -1,6 +1,7 @@
 package ru.itmo.isitmolab.filter;
 
 import jakarta.annotation.Priority;
+import jakarta.inject.Inject;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpSession;
 import jakarta.ws.rs.Priorities;
@@ -21,8 +22,11 @@ public class AuthFilter implements ContainerRequestFilter {
     @Context
     HttpServletRequest request;
 
+    @Inject
+    SessionService sessionService;
+
     @Override
-    public void filter(ContainerRequestContext ctx) throws IOException {
+    public void filter(ContainerRequestContext ctx) {
         final String path = ctx.getUriInfo().getPath();
         final String method = ctx.getMethod();
 
@@ -34,8 +38,7 @@ public class AuthFilter implements ContainerRequestFilter {
             return;
         }
 
-        HttpSession session = request.getSession(false);
-        boolean ok = session != null && session.getAttribute(SessionService.ATTR_USER_ID) != null;
+        boolean ok = sessionService.isActive(request.getSession(false));
 
         if (ok) {
             return;

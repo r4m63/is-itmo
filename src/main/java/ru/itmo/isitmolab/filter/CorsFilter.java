@@ -15,9 +15,8 @@ import java.util.Set;
 public class CorsFilter implements ContainerRequestFilter, ContainerResponseFilter {
 
     private static final Set<String> ALLOWED_ORIGINS = Set.of(
-            "http://localhost:5173",
             "http://127.0.0.1:5173",
-            "http://localhost:22821"
+            "http://127.0.0.1:22821"
     );
 
     private static final String ALLOWED_METHODS = "GET,POST,PUT,DELETE,OPTIONS";
@@ -58,7 +57,6 @@ public class CorsFilter implements ContainerRequestFilter, ContainerResponseFilt
         responseContext.getHeaders().putSingle("Access-Control-Allow-Credentials", "true");
         responseContext.getHeaders().putSingle("Access-Control-Allow-Methods", ALLOWED_METHODS);
         responseContext.getHeaders().putSingle("Access-Control-Expose-Headers", "Location");
-
 
         String reqHeaders = requestContext.getHeaderString("Access-Control-Request-Headers");
         if (reqHeaders == null || reqHeaders.isBlank()) reqHeaders = DEFAULT_ALLOWED_HEADERS;

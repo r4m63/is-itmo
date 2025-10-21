@@ -38,7 +38,6 @@ public class VehicleController {
                 .build();
     }
 
-
     @PUT
     @Path("/{id}")
     public Response updateVehicle(@PathParam("id") Long id, @Valid VehicleDto dto) {

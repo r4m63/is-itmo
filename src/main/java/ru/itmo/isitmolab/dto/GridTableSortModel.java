@@ -10,6 +10,6 @@ import lombok.NoArgsConstructor;
 @AllArgsConstructor
 @Builder
 public class GridTableSortModel {
-    public String colId;
-    public String sort;
+    public String colId; // идентификатор колонки (совпадает с полем JPA)
+    public String sort; // "asc" | "desc"
 }

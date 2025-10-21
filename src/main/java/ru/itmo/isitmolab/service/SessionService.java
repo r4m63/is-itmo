@@ -1,7 +1,6 @@
 package ru.itmo.isitmolab.service;
 
 import jakarta.enterprise.context.ApplicationScoped;
-import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpSession;
 
 @ApplicationScoped

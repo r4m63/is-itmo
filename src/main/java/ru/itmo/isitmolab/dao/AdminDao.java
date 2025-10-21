@@ -17,11 +17,11 @@ public class AdminDao {
     public Optional<Admin> findByLoginAndPassHash(String login, String passHash) {
         try {
             Admin a = em.createQuery(
-                            "select a from Admin a where a.login = :l and a.passHash = :p",
+                            "select a from Admin a where a.login = :login and a.passHash = :hash",
                             Admin.class
                     )
-                    .setParameter("l", login)
-                    .setParameter("p", passHash)
+                    .setParameter("login", login)
+                    .setParameter("hash", passHash)
                     .setMaxResults(1)
                     .getSingleResult();
             return Optional.of(a);

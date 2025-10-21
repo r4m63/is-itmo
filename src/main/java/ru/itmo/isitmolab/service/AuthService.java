@@ -7,6 +7,7 @@ import jakarta.ws.rs.WebApplicationException;
 import jakarta.ws.rs.core.Response;
 import ru.itmo.isitmolab.dao.AdminDao;
 import ru.itmo.isitmolab.dto.CredsDto;
+import ru.itmo.isitmolab.model.Admin;
 
 import java.util.Map;
 
@@ -20,7 +21,7 @@ public class AuthService {
     SessionService sessionService;
 
     public void login(CredsDto creds, HttpSession session) {
-        var admin = adminDao.findByLoginAndPassHash(creds.getLogin(), creds.getPassword())
+        Admin admin = adminDao.findByLoginAndPassHash(creds.getLogin(), creds.getPassword())
                 .orElseThrow(() -> new WebApplicationException(
                         Response.status(Response.Status.UNAUTHORIZED)
                                 .entity(Map.of("message", "Invalid credentials"))
