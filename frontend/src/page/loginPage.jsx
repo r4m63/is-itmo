@@ -1,4 +1,4 @@
-// src/page/LoginPage.jsx
+'use client';
 
 import {useState} from "react";
 import {useLocation, useNavigate} from "react-router-dom";

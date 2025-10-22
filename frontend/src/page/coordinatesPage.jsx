@@ -2,8 +2,17 @@
 
 import {useCallback, useEffect, useMemo, useRef, useState} from "react";
 import {
-    Button, Input, Modal, ModalBody, ModalContent, ModalFooter, ModalHeader,
-    Popover, PopoverContent, PopoverTrigger, useDisclosure
+    Button,
+    Input,
+    Modal,
+    ModalBody,
+    ModalContent,
+    ModalFooter,
+    ModalHeader,
+    Popover,
+    PopoverContent,
+    PopoverTrigger,
+    useDisclosure
 } from "@heroui/react";
 import {toast} from "sonner";
 import styles from "./mainPage.module.css";
@@ -17,18 +26,21 @@ export default function CoordinatesPage() {
     const navigate = useNavigate();
     const {setIsAuthed} = useAuthStore();
 
+    // null - новое, иначе - редактирование
     const [activeCoordinates, setActiveCoordinates] = useState(null);
     const [x, setX] = useState("");
     const [y, setY] = useState("");
 
-    const [needReassign, setNeedReassign] = useState(false);
-    const [refCount, setRefCount] = useState(0);
-    const [reassignTo, setReassignTo] = useState(null); // {id, x, y}
+    // если при удалении сервер вернул 409 (есть связанные ТС) - показываем UI для переназначения
+    const [needReassign, setNeedReassign] = useState(false); // надо ли показывать UI переназначения
+    const [refCount, setRefCount] = useState(0); // // сколько ТС связано
+    const [reassignTo, setReassignTo] = useState(null); // целевые координаты {id, x, y}
 
     const {isOpen, onOpen, onOpenChange} = useDisclosure();
 
     const [tableControls, setTableControls] = useState(null);
-    const [refreshGrid, setRefreshGrid] = useState(() => () => {});
+    const [refreshGrid, setRefreshGrid] = useState(() => () => {
+    });
 
     const wsRef = useRef(null);
     const reconnectTimerRef = useRef(null);
@@ -54,7 +66,9 @@ export default function CoordinatesPage() {
             const ws = new WebSocket(WS_URL);
             wsRef.current = ws;
 
-            ws.onopen = () => { retry = 1000; };
+            ws.onopen = () => {
+                retry = 1000;
+            };
             ws.onmessage = (evt) => {
                 const msg = (evt.data || "").toString().trim();
                 if (msg === "refresh") refreshGrid?.();
@@ -65,7 +79,12 @@ export default function CoordinatesPage() {
                     openSocket();
                 }, retry);
             };
-            ws.onerror = () => { try { ws.close(); } catch {} };
+            ws.onerror = () => {
+                try {
+                    ws.close();
+                } catch {
+                }
+            };
         };
 
         openSocket();
@@ -75,7 +94,10 @@ export default function CoordinatesPage() {
         connectWs();
         return () => {
             clearTimeout(reconnectTimerRef.current);
-            try { wsRef.current?.close(); } catch {}
+            try {
+                wsRef.current?.close();
+            } catch {
+            }
         };
     }, [connectWs]);
 
@@ -121,14 +143,14 @@ export default function CoordinatesPage() {
             : `${API_BASE}/api/coordinates`;
 
         const payload = isEdit
-            ? { id: activeCoordinates.id, x: Number(x), y: Number(y) }
-            : { x: Number(x), y: Number(y) };
+            ? {id: activeCoordinates.id, x: Number(x), y: Number(y)}
+            : {x: Number(x), y: Number(y)};
 
         try {
             const res = await fetch(url, {
                 method: isEdit ? "PUT" : "POST",
                 credentials: "include",
-                headers: { "Content-Type": "application/json" },
+                headers: {"Content-Type": "application/json"},
                 body: JSON.stringify(payload),
             });
 
@@ -187,13 +209,18 @@ export default function CoordinatesPage() {
         try {
             const res = await fetch(
                 `${API_BASE}/api/coordinates/${activeCoordinates.id}?reassignTo=${encodeURIComponent(reassignTo.id)}`,
-                { method: "DELETE", credentials: "include" }
+                {method: "DELETE", credentials: "include"}
             );
 
             if (!res.ok) {
                 let err = {};
-                try { err = await res.json(); } catch {
-                    try { err.message = await res.text(); } catch {}
+                try {
+                    err = await res.json();
+                } catch {
+                    try {
+                        err.message = await res.text();
+                    } catch {
+                    }
                 }
                 toast.error(err?.message || `Ошибка: ${res.status}`);
                 return;
@@ -325,7 +352,8 @@ export default function CoordinatesPage() {
                                         <div className="text-sm opacity-80">
                                             Нельзя удалить координаты
                                             {activeCoordinates ? <> (<b>{activeCoordinates.x}</b>; <b>{activeCoordinates.y}</b>)</> : null}
-                                            {typeof refCount === "number" ? <>: к ним привязано <b>{refCount}</b> ТС.</> : "."}
+                                            {typeof refCount === "number" ? <>: к ним
+                                                привязано <b>{refCount}</b> ТС.</> : "."}
                                             <br/>
                                             Выберите другие координаты, на которые будут переназначены все ТС.
                                         </div>
@@ -333,7 +361,7 @@ export default function CoordinatesPage() {
                                         <CoordinatesPicker
                                             required
                                             excludeId={activeCoordinates?.id}
-                                            value={reassignTo || { id: null, x: "", y: "" }}
+                                            value={reassignTo || {id: null, x: "", y: ""}}
                                             onChange={(sel) => setReassignTo(sel?.id ? sel : null)}
                                         />
 

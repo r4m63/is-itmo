@@ -10,19 +10,23 @@ export default function CoordinatesPicker({
                                               required = true,
                                               errorText = "Выберите координаты из списка"
                                           }) {
+    // как отображать запись в инпуте и в подсказках
+    // "x, y" Если данных нет - пустая строка.
     const formatLabel = (it) =>
         it && (it.x !== undefined) && (it.y !== undefined)
             ? `${it.x}, ${it.y}`
             : "";
 
+    // query - строка в поле ввода. Если во входном value есть id, то сразу подставляем "x, y". Иначе - пусто (приглашаем к вводу).
     const [query, setQuery] = useState(value?.id ? formatLabel(value) : "");
-    const [items, setItems] = useState([]);
+    const [items, setItems] = useState([]); // подсказки, которые получили с сервера
     const [loading, setLoading] = useState(false);
-    const [selectedId, setSelectedId] = useState(value?.id || null);
-    const [touched, setTouched] = useState(false);
-    const debounceRef = useRef(null);
-    const listId = useMemo(() => "coordinates-list-" + Math.random().toString(36).slice(2), []);
+    const [selectedId, setSelectedId] = useState(value?.id || null); // id выбранной записи из подсказок
+    const [touched, setTouched] = useState(false); // был ли фокус (используется для показа ошибки: required && touched && !selectedId)
+    const debounceRef = useRef(null); // id таймера для дебаланса запросов
+    const listId = useMemo(() => "coordinates-list-" + Math.random().toString(36).slice(2), []); // listId - уникальный id для привязки List к dataset
 
+    // Синхронизация локального стейта с внешним пропом value
     useEffect(() => {
         if (value?.id) {
             setQuery(formatLabel(value));
@@ -33,6 +37,7 @@ export default function CoordinatesPicker({
         }
     }, [value?.id, value?.x, value?.y]);
 
+    // запрос к серверу за подсказками
     const fetchCoordinates = async (q) => {
         setLoading(true);
         try {
@@ -49,16 +54,30 @@ export default function CoordinatesPicker({
         }
     };
 
+    // При первом маунте загружаем первоначальные подсказки
     useEffect(() => {
         fetchCoordinates("");
     }, []);
 
+    /**
+     * Дебаунс обновления подсказок при вводе:
+     * - чистим предыдущий таймер,
+     * - ставим новый на 300мс,
+     * - по истечении таймера дергаем fetchCoordinates(query.trim()).
+     */
     useEffect(() => {
         clearTimeout(debounceRef.current);
         debounceRef.current = setTimeout(() => fetchCoordinates(query.trim()), 300);
         return () => clearTimeout(debounceRef.current);
     }, [query]);
 
+    /**
+     * commitByLabel - попытка “закоммитить” выбор по текущей строке в инпуте.
+     * Мы ищем в items запись, чей label (formatLabel(i) -- "x, y") совпадает с тем, что вписано.
+     * Если нашли - это валидный выбор: фиксируем selectedId и пробрасываем onChange({id, x, y}).
+     * Если нет - сбрасываем выбор и пробрасываем onChange({id:null, x:null, y:null}).
+     * touched ставим в true, чтобы при required включилась подсветка ошибки.
+     */
     const commitByLabel = (label) => {
         const hit = items.find(i => formatLabel(i) === label);
         setTouched(true);
@@ -71,6 +90,12 @@ export default function CoordinatesPicker({
         }
     };
 
+    /**
+     * isInvalid — критерий ошибки:
+     * - поле отмечено как required,
+     * - пользователь уже “трогал” поле (touched),
+     * - нет выбранного id (selectedId пустой).
+     */
     const isInvalid = required && touched && !selectedId;
 
     return (

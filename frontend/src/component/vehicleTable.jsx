@@ -24,8 +24,8 @@ export const tableTheme = themeQuartz
     });
 
 export default function VehicleTable({onOpenEditVehicleModal, onReadyRefresh, onReadyControls}) {
-    const gridApiRef = useRef(null);
 
+    const gridApiRef = useRef(null); // API таблицы
     const colDefs = useMemo(() => ([
         {
             headerName: "ID",
@@ -171,9 +171,24 @@ export default function VehicleTable({onOpenEditVehicleModal, onReadyRefresh, on
         },
     ]), [onOpenEditVehicleModal]);
 
+    /**
+     * AG Grid отдаёт sortModel в виде массива объектов {colId, sort, sortIndex?...}
+     * достаточно colId и sort ("asc"/"desc") для бэка
+     */
     const mapSortModel = (sm = []) => sm.map(s => ({colId: s.colId, sort: s.sort}));
 
+
     const makeDatasource = useCallback(() => ({
+        /**
+         * params содержит:
+         * - startRow/endRow - диапазон строк, которые сейчас нужны гриду
+         * - sortModel - массив сортировок [{colId, sort}]
+         * - filterModel - объект фильтров по колонкам
+         *
+         * отправляем POST на /api/vehicle/query с этими параметрами
+         * В ответ ожидаем:
+         *   { rows: [...], lastRow: number } - lastRow нужен AG Grid, чтобы понимать общий размер данных.
+         */
         getRows: async (params) => {
             try {
                 const body = {
@@ -203,30 +218,45 @@ export default function VehicleTable({onOpenEditVehicleModal, onReadyRefresh, on
         }
     }), []);
 
+    /**
+     * Установка datasource в грид и сброс кэша.
+     * В infinite-модели кэшируется несколько "блоков" данных; purgeInfiniteCache полностью его сбрасывает.
+     */
     const setDatasource = useCallback(() => {
         if (!gridApiRef.current) return;
         const ds = makeDatasource();
-        gridApiRef.current.setGridOption('datasource', ds);
-        gridApiRef.current.purgeInfiniteCache();
+        gridApiRef.current.setGridOption('datasource', ds); // новый источник данных
+        gridApiRef.current.purgeInfiniteCache(); // полностью сбрасываем кэш
     }, [makeDatasource]);
 
+    /**
+     * exposeRefresh - отдаём родителю функцию, которая обновляет кэш данных (перезагрузка текущих блоков).
+     * Родитель вызовет onReadyRefresh(fn) и сохранит этот fn у себя.
+     */
     const exposeRefresh = useCallback(() => {
         onReadyRefresh?.(() => {
             if (!gridApiRef.current) return;
-            gridApiRef.current.refreshInfiniteCache();
+            gridApiRef.current.refreshInfiniteCache(); // “перечитать” уже запрошенные блоки заново
         });
     }, [onReadyRefresh]);
 
+    /**
+     * exposeControls - отдаём родителю набор методов для управления фильтрами таблицы извне.
+     * Эти методы вызывают AG Grid API: устанавливают filterModel, чистят сортировку,
+     * сбрасывают кэш и скроллят на начало.
+     */
     const exposeControls = useCallback(() => {
         if (!onReadyControls) return;
         const api = gridApiRef.current;
         if (!api) return;
 
+        // хелпер: почистить сортировку у всех колонок
         const clearSort = () => {
             api.applyColumnState?.({defaultState: {sort: null, sortIndex: null}});
             api.setGridOption?.('sortModel', null);
         };
 
+        // хелпер: применить фильтры, сбросить кэш, пролистать на первую строку
         const setAndGo = (filterModel) => {
             api.setFilterModel(filterModel || null);
             api.onFilterChanged();
@@ -234,8 +264,12 @@ export default function VehicleTable({onOpenEditVehicleModal, onReadyRefresh, on
             api.ensureIndexVisible(0);
         };
 
+        // формирование объектов контролов и отдаём наверх
         onReadyControls({
+            // Принудительное обновление текущего кэша (без смены фильтров)
             refresh: () => api.refreshInfiniteCache(),
+
+            // Полный сброс фильтров+сортировки и сброс кэша
             clearFilters: () => {
                 api.setFilterModel(null);
                 api.onFilterChanged();
@@ -244,6 +278,7 @@ export default function VehicleTable({onOpenEditVehicleModal, onReadyRefresh, on
                 api.ensureIndexVisible(0);
             },
 
+            // Применить фильтр: fuelConsumption > X
             applyFilterFuelGt: (raw) => {
                 const x = Number.parseFloat(raw);
                 if (!Number.isFinite(x)) return;
@@ -251,12 +286,16 @@ export default function VehicleTable({onOpenEditVehicleModal, onReadyRefresh, on
                     fuelConsumption: {filterType: "number", type: "greaterThan", filter: x},
                 });
             },
+
+            // Применить фильтр: type == выбранному значению
             applyFilterByType: (type) => {
                 if (!type) return;
                 setAndGo({
                     type: {filterType: "text", type: "equals", filter: String(type)},
                 });
             },
+
+            // Применить фильтр: enginePower в диапазоне [min, max]
             applyFilterEnginePowerRange: (rawMin, rawMax) => {
                 const min = Number.parseFloat(rawMin);
                 const max = Number.parseFloat(rawMax);
@@ -265,12 +304,16 @@ export default function VehicleTable({onOpenEditVehicleModal, onReadyRefresh, on
                     enginePower: {filterType: "number", type: "inRange", filter: min, filterTo: max},
                 });
             },
+
+            // Применить фильтр по координате X (equals)
             applyFilterByCoordinatesX: (xVal) => {
                 if (xVal === undefined || xVal === null || xVal === "") return;
                 setAndGo({
                     "coordinates.x": {filterType: "number", type: "equals", filter: Number(xVal)},
                 });
             },
+
+            // Применить фильтр по координате Y (equals)
             applyFilterByCoordinatesY: (yVal) => {
                 if (yVal === undefined || yVal === null || yVal === "") return;
                 setAndGo({
@@ -281,13 +324,22 @@ export default function VehicleTable({onOpenEditVehicleModal, onReadyRefresh, on
     }, [onReadyControls]);
 
 
+    /**
+     * onGridReady — вызывается один раз после инициализации таблицы.
+     * Здесь мы сохраняем API грида, выставляем datasource и пробрасываем наружу control-функции.
+     */
     const onGridReady = useCallback((e) => {
-        gridApiRef.current = e.api;
-        setDatasource();
-        exposeRefresh();
-        exposeControls();
+        gridApiRef.current = e.api; // запоминаем ссылку на API грида
+        setDatasource();            // подключаем источник данных
+        exposeRefresh();            // отдаём наружу функцию refresh
+        exposeControls();           // отдаём наружу контролы фильтров
     }, [setDatasource, exposeRefresh, exposeControls]);
 
+    /**
+     * События, которые приходят от AG Grid при смене фильтров/сортировок самим пользователем в UI.
+     * Мы полностью сбрасываем кэш (purgeInfiniteCache) и пролистываем в начало (ensureIndexVisible(0)),
+     * чтобы запросы в бэкенд соответствовали новым условиям.
+     */
     const onFilterChanged = useCallback(() => {
         gridApiRef.current?.purgeInfiniteCache();
         gridApiRef.current?.ensureIndexVisible(0);
