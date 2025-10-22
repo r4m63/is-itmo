@@ -11,13 +11,10 @@ import ru.itmo.isitmolab.model.Coordinates;
 @Builder
 public class CoordinatesDto {
     private Long id;
-
     @NotNull(message = "Заполните X.")
     private Double x;
-
     @NotNull(message = "Заполните Y.")
     private Float y;
-
     private Integer vehiclesCount;
 
     public static CoordinatesDto toDto(Coordinates c, Integer vehiclesCount) {
@@ -39,8 +36,4 @@ public class CoordinatesDto {
                 .build();
     }
 
-    public static void apply(CoordinatesDto d, Coordinates target) {
-        if (d.getX() != null) target.setX(d.getX());
-        if (d.getY() != null) target.setY(d.getY());
-    }
 }

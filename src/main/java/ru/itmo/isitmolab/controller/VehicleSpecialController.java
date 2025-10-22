@@ -1,5 +1,6 @@
 package ru.itmo.isitmolab.controller;
 
+import jakarta.enterprise.context.RequestScoped;
 import jakarta.inject.Inject;
 import jakarta.validation.constraints.Min;
 import jakarta.ws.rs.*;
@@ -14,6 +15,7 @@ import java.util.Map;
 @Path("/vehicle/special")
 @Consumes(MediaType.APPLICATION_JSON)
 @Produces(MediaType.APPLICATION_JSON)
+@RequestScoped
 public class VehicleSpecialController {
 
     @Inject

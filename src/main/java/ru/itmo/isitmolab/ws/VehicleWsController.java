@@ -5,10 +5,10 @@ import jakarta.websocket.*;
 import jakarta.websocket.server.ServerEndpoint;
 
 @ServerEndpoint("/ws/vehicles")
-public class VehicleWsEndpoint {
+public class VehicleWsController {
 
-    private VehicleWsHub hub() {
-        return CDI.current().select(VehicleWsHub.class).get();
+    private VehicleWsService hub() {
+        return CDI.current().select(VehicleWsService.class).get(); // не CDI-бин
     }
 
     @OnOpen
@@ -28,6 +28,7 @@ public class VehicleWsEndpoint {
 
     @OnMessage
     public void onMessage(String message, Session session) {
-
+        // входящие
     }
+
 }

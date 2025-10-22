@@ -3,7 +3,6 @@ package ru.itmo.isitmolab.filter;
 import jakarta.annotation.Priority;
 import jakarta.inject.Inject;
 import jakarta.servlet.http.HttpServletRequest;
-import jakarta.servlet.http.HttpSession;
 import jakarta.ws.rs.Priorities;
 import jakarta.ws.rs.container.ContainerRequestContext;
 import jakarta.ws.rs.container.ContainerRequestFilter;
@@ -12,7 +11,6 @@ import jakarta.ws.rs.core.Response;
 import jakarta.ws.rs.ext.Provider;
 import ru.itmo.isitmolab.service.SessionService;
 
-import java.io.IOException;
 import java.util.Map;
 
 @Provider

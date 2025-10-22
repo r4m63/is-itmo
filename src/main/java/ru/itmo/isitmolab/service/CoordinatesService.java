@@ -7,9 +7,9 @@ import jakarta.ws.rs.WebApplicationException;
 import jakarta.ws.rs.core.Response;
 import ru.itmo.isitmolab.dao.CoordinatesDao;
 import ru.itmo.isitmolab.dao.VehicleDao;
+import ru.itmo.isitmolab.dto.CoordinatesDto;
 import ru.itmo.isitmolab.dto.GridTableRequest;
 import ru.itmo.isitmolab.dto.GridTableResponse;
-import ru.itmo.isitmolab.dto.CoordinatesDto;
 import ru.itmo.isitmolab.model.Coordinates;
 
 import java.util.List;
@@ -46,7 +46,6 @@ public class CoordinatesService {
         return CoordinatesDto.toDto(c, cnt);
     }
 
-
     @Transactional
     public Long create(CoordinatesDto dto) {
         if (dto.getX() == null || dto.getY() == null) {
@@ -67,26 +66,14 @@ public class CoordinatesService {
         coordinatesDao.save(c);
     }
 
-    @Transactional
-    public void delete(Long id) {
-        coordinatesDao.deleteById(id);
-    }
-
     public List<CoordinatesDto> searchShort(String q, int limit) {
         return coordinatesDao.search(q, limit).stream()
                 .map(CoordinatesDto::toShort)
                 .toList();
     }
 
-    public long countVehiclesOf(Long coordinatesId) {
-        return vehicleDao.countByCoordinatesId(coordinatesId);
-    }
-
     @Transactional
     public void deleteCoordinates(Long coordinatesId, Long reassignTo) {
-        Coordinates victim = coordinatesDao.findById(coordinatesId)
-                .orElseThrow(() -> new WebApplicationException(
-                        "Coordinates not found: " + coordinatesId, Response.Status.NOT_FOUND));
 
         long refCount = vehicleDao.countByCoordinatesId(coordinatesId);
 
@@ -114,4 +101,5 @@ public class CoordinatesService {
 
         coordinatesDao.deleteById(coordinatesId);
     }
+
 }

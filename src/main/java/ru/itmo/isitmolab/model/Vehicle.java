@@ -1,8 +1,11 @@
 package ru.itmo.isitmolab.model;
 
 import jakarta.persistence.*;
-import jakarta.validation.constraints.*;
+import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.Positive;
 import lombok.*;
+
 import java.time.LocalDateTime;
 
 @NamedEntityGraph(
@@ -71,5 +74,12 @@ public class Vehicle {
     @JoinColumn(name = "coordinates_id", nullable = false,
             foreignKey = @ForeignKey(name = "vehicle_coordinates_id_fkey"))
     private Coordinates coordinates;
+
+    @PrePersist
+    public void prePersist() { // автоматически перед первым INSERT
+        if (creationTime == null) {
+            creationTime = LocalDateTime.now();
+        }
+    }
 
 }

@@ -10,13 +10,15 @@ import java.io.IOException;
 import java.util.Set;
 
 @Provider
-@PreMatching
+@PreMatching // фильтр до контроллера
 @Priority(Priorities.AUTHENTICATION - 1)
 public class CorsFilter implements ContainerRequestFilter, ContainerResponseFilter {
 
     private static final Set<String> ALLOWED_ORIGINS = Set.of(
             "http://127.0.0.1:5173",
-            "http://127.0.0.1:22821"
+            "http://localhost:5173",
+            "http://127.0.0.1:22821",
+            "http://localhost:22821"
     );
 
     private static final String ALLOWED_METHODS = "GET,POST,PUT,DELETE,OPTIONS";
@@ -27,7 +29,7 @@ public class CorsFilter implements ContainerRequestFilter, ContainerResponseFilt
     }
 
     @Override
-    public void filter(ContainerRequestContext requestContext) throws IOException {
+    public void filter(ContainerRequestContext requestContext) {
         final String origin = requestContext.getHeaderString("Origin");
 
         if ("OPTIONS".equalsIgnoreCase(requestContext.getMethod()) && isAllowedOrigin(origin)) {
@@ -48,7 +50,7 @@ public class CorsFilter implements ContainerRequestFilter, ContainerResponseFilt
     }
 
     @Override
-    public void filter(ContainerRequestContext requestContext, ContainerResponseContext responseContext) throws IOException {
+    public void filter(ContainerRequestContext requestContext, ContainerResponseContext responseContext) {
         final String origin = requestContext.getHeaderString("Origin");
         if (!isAllowedOrigin(origin)) return;
 
@@ -61,6 +63,6 @@ public class CorsFilter implements ContainerRequestFilter, ContainerResponseFilt
         String reqHeaders = requestContext.getHeaderString("Access-Control-Request-Headers");
         if (reqHeaders == null || reqHeaders.isBlank()) reqHeaders = DEFAULT_ALLOWED_HEADERS;
         responseContext.getHeaders().putSingle("Access-Control-Allow-Headers", reqHeaders);
-
     }
+
 }

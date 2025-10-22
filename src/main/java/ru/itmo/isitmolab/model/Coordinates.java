@@ -38,4 +38,5 @@ public class Coordinates {
 
     @OneToMany(mappedBy = "coordinates", fetch = FetchType.LAZY)
     private List<Vehicle> vehicles = new ArrayList<>();
+
 }

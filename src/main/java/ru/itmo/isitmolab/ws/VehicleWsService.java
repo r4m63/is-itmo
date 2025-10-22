@@ -7,9 +7,9 @@ import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 
 @ApplicationScoped
-public class VehicleWsHub {
+public class VehicleWsService {
 
-    private final Set<Session> sessions = ConcurrentHashMap.newKeySet();
+    private final Set<Session> sessions = ConcurrentHashMap.newKeySet(); // при ws вызовы с разных потоках
 
     public void add(Session s) {
         sessions.add(s);

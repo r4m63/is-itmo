@@ -4,10 +4,9 @@ import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.PersistenceContext;
 import jakarta.persistence.criteria.*;
-import jakarta.transaction.Transactional;
 import ru.itmo.isitmolab.dto.GridTableRequest;
 import ru.itmo.isitmolab.model.Coordinates;
-import ru.itmo.isitmolab.util.gridtable.GridTablePredicateBuilder;
+import ru.itmo.isitmolab.util.GridTablePredicateBuilder;
 
 import java.util.*;
 
@@ -17,13 +16,11 @@ public class CoordinatesDao {
     @PersistenceContext(unitName = "studsPU")
     EntityManager em;
 
-    @Transactional
-    public Coordinates save(Coordinates c) {
+    public void save(Coordinates c) {
         if (c.getId() == null) {
             em.persist(c);
-            return c;
         } else {
-            return em.merge(c);
+            em.merge(c);
         }
     }
 
@@ -31,7 +28,6 @@ public class CoordinatesDao {
         return Optional.ofNullable(em.find(Coordinates.class, id));
     }
 
-    @Transactional
     public void deleteById(Long id) {
         if (id == null) return;
         Coordinates ref = em.find(Coordinates.class, id);
@@ -89,7 +85,6 @@ public class CoordinatesDao {
         return em.createQuery(cnt).getSingleResult();
     }
 
-    @Transactional
     public Coordinates findOrCreateByXY(Double x, Float y) {
         Coordinates c = em.createQuery(
                         "select c from Coordinates c where c.x = :x and c.y = :y", Coordinates.class)
@@ -129,14 +124,6 @@ public class CoordinatesDao {
         return c.intValue();
     }
 
-    public List<Coordinates> findAllOrdered() {
-        return em.createQuery(
-                "select c from Coordinates c order by c.id asc",
-                Coordinates.class
-        ).getResultList();
-    }
-
-
     public List<Coordinates> search(String q, int limit) {
         int lim = Math.max(1, Math.min(limit, 100));
         if (q == null || q.isBlank()) {
@@ -173,7 +160,8 @@ public class CoordinatesDao {
                         .setParameter("val", val)
                         .setMaxResults(lim)
                         .getResultList();
-            } catch (NumberFormatException ignored) { }
+            } catch (NumberFormatException ignored) {
+            }
         }
 
         return em.createQuery("select c from Coordinates c order by c.id asc", Coordinates.class)

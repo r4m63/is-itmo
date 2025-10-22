@@ -2,7 +2,6 @@ package ru.itmo.isitmolab.service;
 
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
-import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpSession;
 import jakarta.transaction.Transactional;
 import jakarta.ws.rs.WebApplicationException;
@@ -17,11 +16,10 @@ import ru.itmo.isitmolab.dto.VehicleDto;
 import ru.itmo.isitmolab.model.Admin;
 import ru.itmo.isitmolab.model.Coordinates;
 import ru.itmo.isitmolab.model.Vehicle;
-import ru.itmo.isitmolab.ws.VehicleWsHub;
+import ru.itmo.isitmolab.ws.VehicleWsService;
 
 import java.util.List;
 import java.util.Map;
-import java.util.Objects;
 
 @ApplicationScoped
 public class VehicleService {
@@ -36,11 +34,12 @@ public class VehicleService {
     private SessionService sessionService;
 
     @Inject
-    private VehicleWsHub wsHub;
+    private VehicleWsService wsHub;
 
     @Inject
     private CoordinatesDao coordinatesDao;
 
+    @Transactional
     public Long createNewVehicle(VehicleDto dto, HttpSession session) {
         Long adminId = sessionService.getCurrentUserId(session);
         if (adminId == null) {
@@ -62,7 +61,7 @@ public class VehicleService {
         return v.getId();
     }
 
-
+    @Transactional
     public void updateVehicle(Long id, VehicleDto dto) {
         Vehicle current = dao.findById(id)
                 .orElseThrow(() -> new WebApplicationException(
@@ -85,6 +84,7 @@ public class VehicleService {
         return VehicleDto.toDto(v);
     }
 
+    @Transactional
     public void deleteVehicleById(Long id) {
         if (!dao.existsById(id)) {
             throw new WebApplicationException(
@@ -94,11 +94,7 @@ public class VehicleService {
         wsHub.broadcastText("refresh");
     }
 
-    public List<VehicleDto> getAllVehicles() {
-        return dao.findAll().stream().map(VehicleDto::toDto).toList();
-    }
-
-    public GridTableResponse<VehicleDto> queryTableGridFilters(GridTableRequest req) {
+    public GridTableResponse<VehicleDto> queryVehiclesTable(GridTableRequest req) {
         List<Vehicle> rows = dao.findPageByGrid(req);
         long total = dao.countByGrid(req);
         List<VehicleDto> dtos = rows.stream()
@@ -106,22 +102,6 @@ public class VehicleService {
                 .toList();
 
         return new GridTableResponse<>(dtos, (int) total);
-    }
-
-    public List<Vehicle> findByCoordinates(Long coordinatesId) {
-        return dao.findByCoordinatesId(coordinatesId);
-    }
-
-    @Transactional
-    public int reassignCoordinatesBulk(Long fromCoordinatesId, Long toCoordinatesId) {
-        if (Objects.equals(fromCoordinatesId, toCoordinatesId)) {
-            throw new WebApplicationException("Нельзя переназначать на те же координаты", Response.Status.BAD_REQUEST);
-        }
-        if (toCoordinatesId == null || !coordinatesDao.existsById(toCoordinatesId)) {
-            throw new WebApplicationException("Целевая точка координат не найдена: " + toCoordinatesId,
-                    Response.Status.BAD_REQUEST);
-        }
-        return dao.reassignCoordinates(fromCoordinatesId, toCoordinatesId);
     }
 
     private Coordinates resolveCoordinatesForDto(VehicleDto dto) {
@@ -134,10 +114,11 @@ public class VehicleService {
                                     .build()
                     ));
         }
-        if (dto.getCoordinatesX() != null && dto.getCoordinatesY() != null) {
+        if (dto.getCoordinatesX() != null && dto.getCoordinatesY() != null) { // Если id нет, но сырые x и y
             return coordinatesDao.findOrCreateByXY(dto.getCoordinatesX(), dto.getCoordinatesY());
         }
         throw new WebApplicationException("coordinatesId или (coordinatesX, coordinatesY) — обязательны",
                 Response.Status.BAD_REQUEST);
     }
+
 }

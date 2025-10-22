@@ -5,11 +5,10 @@ import jakarta.persistence.EntityGraph;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.PersistenceContext;
 import jakarta.persistence.criteria.*;
-import jakarta.transaction.Transactional;
 import ru.itmo.isitmolab.dto.GridTableRequest;
 import ru.itmo.isitmolab.model.Coordinates;
 import ru.itmo.isitmolab.model.Vehicle;
-import ru.itmo.isitmolab.util.gridtable.GridTablePredicateBuilder;
+import ru.itmo.isitmolab.util.GridTablePredicateBuilder;
 
 import java.util.*;
 
@@ -19,7 +18,6 @@ public class VehicleDao {
     @PersistenceContext(unitName = "studsPU")
     EntityManager em;
 
-    @Transactional
     public void save(Vehicle v) {
         if (v.getId() == null) {
             em.persist(v);
@@ -42,28 +40,12 @@ public class VehicleDao {
         return res != null && res > 0;
     }
 
-    @Transactional
     public void deleteById(Long id) {
         if (id == null)
             return;
         Vehicle res = em.find(Vehicle.class, id);
         if (res != null)
             em.remove(res);
-    }
-
-    public List<Vehicle> findAll() {
-        return em.createQuery(
-                "select v from Vehicle v order by v.creationTime desc, v.id desc", Vehicle.class
-        ).getResultList();
-    }
-
-    public List<Vehicle> findAll(int offset, int limit) {
-        return em.createQuery(
-                        "select v from Vehicle v order by v.creationTime desc, v.id desc", Vehicle.class
-                )
-                .setFirstResult(Math.max(0, offset))
-                .setMaxResults(Math.max(1, limit))
-                .getResultList();
     }
 
     public List<Vehicle> findPageByGrid(GridTableRequest req) {
@@ -155,21 +137,14 @@ public class VehicleDao {
                 .getSingleResult();
     }
 
-    @Transactional
-    public int reassignCoordinates(Long fromCoordinatesId, Long toCoordinatesId) {
-        if (fromCoordinatesId == null || toCoordinatesId == null) return 0;
+    public void reassignCoordinates(Long fromCoordinatesId, Long toCoordinatesId) {
+        if (fromCoordinatesId == null || toCoordinatesId == null) return;
         Coordinates toRef = em.getReference(Coordinates.class, toCoordinatesId);
-        return em.createQuery(
+        em.createQuery(
                         "update Vehicle v set v.coordinates = :to where v.coordinates.id = :from")
                 .setParameter("to", toRef)
                 .setParameter("from", fromCoordinatesId)
                 .executeUpdate();
     }
 
-    public List<Vehicle> findByCoordinatesId(Long coordinatesId) {
-        return em.createQuery(
-                        "select v from Vehicle v where v.coordinates.id = :cid order by v.id asc", Vehicle.class)
-                .setParameter("cid", coordinatesId)
-                .getResultList();
-    }
 }

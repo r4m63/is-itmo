@@ -1,4 +1,4 @@
-package ru.itmo.isitmolab.util.gridtable;
+package ru.itmo.isitmolab.util;
 
 import jakarta.persistence.criteria.*;
 import lombok.experimental.UtilityClass;
@@ -11,7 +11,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 
-import static ru.itmo.isitmolab.util.gridtable.DateParsers.parseToLocalDate;
+import static ru.itmo.isitmolab.util.DateParsers.parseToLocalDate;
 
 @UtilityClass
 public final class GridTablePredicateBuilder {

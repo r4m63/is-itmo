@@ -13,7 +13,6 @@ import ru.itmo.isitmolab.dto.GridTableRequest;
 import ru.itmo.isitmolab.dto.VehicleDto;
 import ru.itmo.isitmolab.service.VehicleService;
 
-import java.util.List;
 import java.util.Map;
 
 @Path("/vehicle")
@@ -32,7 +31,6 @@ public class VehicleController {
     public Response createVehicle(@Valid VehicleDto dto) {
         HttpSession session = request.getSession(false);
         Long id = vehicleService.createNewVehicle(dto, session);
-
         return Response.status(Response.Status.CREATED)
                 .entity(Map.of("id", id))
                 .build();
@@ -59,39 +57,12 @@ public class VehicleController {
         return Response.status(Response.Status.NO_CONTENT).build();
     }
 
-    @GET
-    public Response listAllVehicles(
-            @QueryParam("offset") @DefaultValue("0") int offset,
-            @QueryParam("limit") @DefaultValue("1000") int limit
-    ) {
-        List<VehicleDto> res = vehicleService.getAllVehicles();
-        return Response.ok(res).build();
-    }
-
     @POST
     @Path("/query")
     public Response queryVehicles(@Valid GridTableRequest req) {
-        var result = vehicleService.queryTableGridFilters(req);
+        var result = vehicleService.queryVehiclesTable(req);
         return Response.ok(result).build();
     }
 
-    @GET
-    @Path("/at-coordinates/{coordinatesId}")
-    public List<Map<String, Object>> listByCoordinates(@PathParam("coordinatesId") Long coordinatesId) {
-        return vehicleService.findByCoordinates(coordinatesId).stream()
-                .map(v -> Map.<String, Object>of(
-                        "id", v.getId(),
-                        "name", v.getName()
-                ))
-                .toList();
-    }
-
-    @POST
-    @Path("/reassign-coordinates-bulk")
-    public Map<String, Object> reassignCoordinatesBulk(Map<String, Object> body) {
-        Long fromCoordId = body.get("fromCoordinatesId") == null ? null : Long.valueOf(body.get("fromCoordinatesId").toString());
-        Long toCoordId   = body.get("toCoordinatesId")   == null ? null : Long.valueOf(body.get("toCoordinatesId").toString());
-        int updated = vehicleService.reassignCoordinatesBulk(fromCoordId, toCoordId);
-        return Map.of("updated", updated);
-    }
 }
+
