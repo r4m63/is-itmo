@@ -8,7 +8,7 @@ import jakarta.websocket.server.ServerEndpoint;
 public class VehicleWsController {
 
     private VehicleWsService hub() {
-        return CDI.current().select(VehicleWsService.class).get(); // не CDI-бин
+        return CDI.current().select(VehicleWsService.class).get();
     }
 
     @OnOpen
