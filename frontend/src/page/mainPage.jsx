@@ -69,7 +69,6 @@ export default function MainPage() {
         }
     }, []);
 
-    // ws с автопереподключением
     const connectWs = useCallback(() => {
         if (wsRef.current?.readyState === WebSocket.OPEN || wsRef.current?.readyState === WebSocket.CONNECTING)
             return; // уже открыт или соединяется

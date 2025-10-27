@@ -30,6 +30,20 @@ CREATE TABLE IF NOT EXISTS vehicle
 );
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 -- 1) Любой объект с минимальным distance_travelled (среди NOT NULL)
 CREATE OR REPLACE FUNCTION fn_vehicle_min_distance()
     RETURNS SETOF vehicle
