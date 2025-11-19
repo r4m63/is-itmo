@@ -10,14 +10,13 @@ import jakarta.ws.rs.core.Response;
 import ru.itmo.isitmolab.dao.AdminDao;
 import ru.itmo.isitmolab.dao.CoordinatesDao;
 import ru.itmo.isitmolab.dao.VehicleDao;
-import ru.itmo.isitmolab.dto.GridTableRequest;
-import ru.itmo.isitmolab.dto.GridTableResponse;
-import ru.itmo.isitmolab.dto.VehicleDto;
+import ru.itmo.isitmolab.dto.*;
 import ru.itmo.isitmolab.model.Admin;
 import ru.itmo.isitmolab.model.Coordinates;
 import ru.itmo.isitmolab.model.Vehicle;
 import ru.itmo.isitmolab.ws.VehicleWsService;
 
+import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 
@@ -121,4 +120,23 @@ public class VehicleService {
                 Response.Status.BAD_REQUEST);
     }
 
+    @Transactional
+    public void importVehicles(List<VehicleImportItemDto> items, HttpSession session) {
+        Long adminId = sessionService.getCurrentUserId(session);
+
+        Admin admin = adminDao.findById(adminId)
+                .orElseThrow(() -> new WebApplicationException(
+                        "Admin not found: " + adminId, Response.Status.UNAUTHORIZED));
+
+        for (VehicleImportItemDto item : items) {
+            VehicleDto dto = VehicleImportItemDto.toEntity(item);
+            Coordinates coords = resolveCoordinatesForDto(dto);
+            Vehicle v = VehicleDto.toEntity(dto, null);
+            v.setAdmin(admin);
+            v.setCoordinates(coords);
+            dao.save(v);
+        }
+
+        wsHub.broadcastText("refresh");
+    }
 }

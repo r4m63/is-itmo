@@ -11,8 +11,10 @@ import jakarta.ws.rs.core.MediaType;
 import jakarta.ws.rs.core.Response;
 import ru.itmo.isitmolab.dto.GridTableRequest;
 import ru.itmo.isitmolab.dto.VehicleDto;
+import ru.itmo.isitmolab.dto.VehicleImportItemDto;
 import ru.itmo.isitmolab.service.VehicleService;
 
+import java.util.List;
 import java.util.Map;
 
 @Path("/vehicle")
@@ -29,29 +31,28 @@ public class VehicleController {
 
     @POST
     public Response createVehicle(@Valid VehicleDto dto) {
-        HttpSession session = request.getSession(false);
-        Long id = vehicleService.createNewVehicle(dto, session);
+        Long id = vehicleService.createNewVehicle(dto, request.getSession(false));
         return Response.status(Response.Status.CREATED)
                 .entity(Map.of("id", id))
                 .build();
     }
 
     @PUT
-    @Path("/{id}")
+    @Path("/{id:\\d+}")
     public Response updateVehicle(@PathParam("id") Long id, @Valid VehicleDto dto) {
         vehicleService.updateVehicle(id, dto);
         return Response.noContent().build();
     }
 
     @GET
-    @Path("/{id}")
+    @Path("/{id:\\d+}")
     public Response getVehicle(@PathParam("id") Long id) {
         var res = vehicleService.getVehicleById(id);
         return Response.ok(res).build();
     }
 
     @DELETE
-    @Path("/{id}")
+    @Path("/{id:\\d+}")
     public Response deleteVehicle(@PathParam("id") Long id) {
         vehicleService.deleteVehicleById(id);
         return Response.status(Response.Status.NO_CONTENT).build();
@@ -62,6 +63,14 @@ public class VehicleController {
     public Response queryVehicles(@Valid GridTableRequest req) {
         var result = vehicleService.queryVehiclesTable(req);
         return Response.ok(result).build();
+    }
+
+    @POST
+    @Path("/import")
+    @Consumes(MediaType.APPLICATION_JSON)
+    public Response importVehicles(@Valid List<@Valid VehicleImportItemDto> items) {
+        vehicleService.importVehicles(items, request.getSession(false));
+        return Response.ok().build();
     }
 
 }

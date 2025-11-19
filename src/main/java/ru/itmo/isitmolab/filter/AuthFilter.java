@@ -28,25 +28,23 @@ public class AuthFilter implements ContainerRequestFilter {
         final String path = ctx.getUriInfo().getPath();
         final String method = ctx.getMethod();
 
-        if (path.equals("auth") || path.startsWith("/auth")) {
+        if ("OPTIONS".equalsIgnoreCase(method)) {
             return;
         }
 
-        if ("OPTIONS".equalsIgnoreCase(method)) {
+        if (path.contains("auth")) {
             return;
         }
 
         boolean ok = sessionService.isActive(request.getSession(false));
 
-        if (ok) {
-            return;
+        if (!ok) {
+            ctx.abortWith(
+                    Response.status(Response.Status.UNAUTHORIZED)
+                            .entity(Map.of("message", "Unauthorized"))
+                            .build()
+            );
         }
-
-        ctx.abortWith(
-                Response.status(Response.Status.UNAUTHORIZED)
-                        .entity(Map.of("message", "Unauthorized"))
-                        .build()
-        );
     }
 
 }

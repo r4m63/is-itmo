@@ -374,6 +374,101 @@ export default function MainPage() {
         tableControls?.clearFilters?.();
     };
 
+    const fileInputRef = useRef(null);
+    const handleImportClick = () => {
+        if (fileInputRef.current) {
+            fileInputRef.current.click();
+        }
+    };
+    const handleFileChange = async (e) => {
+        const file = e.target.files && e.target.files[0];
+        if (!file) return;
+
+        try {
+            const text = await file.text();
+            let parsed;
+            try {
+                parsed = JSON.parse(text);
+            } catch (err) {
+                toast.warning("Файл не является корректным JSON");
+                return;
+            }
+            if (!Array.isArray(parsed)) {
+                toast.warning("Ожидается JSON-массив объектов для импорта");
+                return;
+            }
+
+            const response = await fetch(`${API_BASE}/api/vehicle/import`, {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json",
+                },
+                credentials: 'include',
+                body: JSON.stringify(parsed),
+            });
+            // if (response.ok) {
+            //     refreshGrid();
+            //     // onOpenChange(false);
+            //     toast.success("Сохранено");
+            // } else {
+            //     switch (response.status) {
+            //         case 401:
+            //             setIsAuthed(false);
+            //             toast.error('Not correct credentials');
+            //             break;
+            //         default:
+            //             toast.error(`Error: ${response.status} - ${response.statusText}`);
+            //             break;
+            //     }
+            // }
+            if (response.ok) {
+                refreshGrid();
+                toast.success("Сохранено");
+                return;
+            }
+
+            let errorBody = null;
+            try {
+                errorBody = await response.json();
+            } catch (parseErr) {
+                // тело не JSON - null
+            }
+
+            if (response.status === 401) {
+                setIsAuthed(false);
+                toast.error("Not correct credentials");
+            } else if (response.status === 400 && errorBody) {
+                if (Array.isArray(errorBody.errors) && errorBody.errors.length > 0) {
+                    const lines = errorBody.errors.map(err => {
+                        const rowPart = err.rowNumber != null
+                            ? `Элемент ${err.rowNumber}: `
+                            : "";
+                        return rowPart + err.message;
+                    });
+
+                    toast.error(
+                        <div>
+                            {lines.map((line, idx) => (
+                                <div key={idx}>{line}</div>
+                            ))}
+                        </div>
+                    );
+                } else if (errorBody.message) {
+                    toast.error(errorBody.message);
+                } else {
+                    toast.error("Ошибка валидации (400)");
+                }
+            } else {
+                toast.error(`Error: ${response.status} - ${response.statusText}`);
+            }
+        } catch (err) {
+            console.error(err);
+            toast.error("catch error");
+        } finally {
+            e.target.value = "";
+        }
+    };
+
     return (
         <>
             <div className={styles.totalwrapp}>
@@ -392,6 +487,20 @@ export default function MainPage() {
                             </Button>
                             <Button color="primary" className={styles.control} onPress={() => navigate("/coordinates")}>
                                 Coordinates
+                            </Button>
+                            <input
+                                ref={fileInputRef}
+                                type="file"
+                                accept="application/json"
+                                style={{display: "none"}}
+                                onChange={handleFileChange}
+                            />
+                            <Button
+                                color="primary"
+                                className={styles.control}
+                                onPress={handleImportClick}
+                            >
+                                Импорт JSON
                             </Button>
                         </div>
                     </div>

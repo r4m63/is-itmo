@@ -1,0 +1,58 @@
+[
+  {
+    "name": "1",
+    "type": "CAR",
+    "enginePower": 181,
+    "numberOfWheels": 4,
+    "capacity": 5,
+    "distanceTravelled": 120000,
+    "fuelConsumption": 7.5,
+    "fuelType": "KEROSENE",
+    "coordinates": {
+      "x": 100.5,
+      "y": 200.7
+    }
+  },
+  {
+    "name": "2",
+    "type": "MOTORCYCLE",
+    "enginePower": 95,
+    "numberOfWheels": 2,
+    "capacity": 2,
+    "distanceTravelled": 35000,
+    "fuelConsumption": 4.3,
+    "fuelType": "MANPOWER",
+    "coordinates": {
+      "x": 10.0,
+      "y": 15.0
+    }
+  },
+  {
+    "name": "3",
+    "type": "HELICOPTER",
+    "enginePower": 2000,
+    "numberOfWheels": 6,
+    "capacity": 20,
+    "distanceTravelled": 5000,
+    "fuelConsumption": 50.0,
+    "fuelType": "NUCLEAR",
+    "coordinates": {
+      "x": 300.0,
+      "y": 450.0
+    }
+  },
+  {
+    "name": "4",
+    "type": "CHOPPER",
+    "enginePower": 120,
+    "numberOfWheels": 2,
+    "capacity": 1,
+    "distanceTravelled": 8000,
+    "fuelConsumption": 5.2,
+    "fuelType": "KEROSENE",
+    "coordinates": {
+      "x": 612.9,
+      "y": 961.5
+    }
+  }
+]
