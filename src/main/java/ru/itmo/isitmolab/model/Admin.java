@@ -28,7 +28,6 @@ public class Admin {
     @Column(name = "salt", nullable = false)
     private String salt;
 
-    @Column(name = "creation_time", nullable = false, updatable = false,
-            columnDefinition = "timestamp default now()")
+    @Column(name = "creation_time", nullable = false, updatable = false)
     private LocalDateTime creationTime;
 }

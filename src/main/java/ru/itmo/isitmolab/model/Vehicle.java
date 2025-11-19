@@ -32,8 +32,7 @@ public class Vehicle {
     @Column(nullable = false)
     private String name;
 
-    @Column(name = "creation_time", nullable = false, updatable = false,
-            columnDefinition = "timestamp default now()")
+    @Column(name = "creation_time", nullable = false, updatable = false)
     private LocalDateTime creationTime;
 
     @NotNull
@@ -66,17 +65,15 @@ public class Vehicle {
     private FuelType fuelType;
 
     @ManyToOne(optional = false, fetch = FetchType.LAZY)
-    @JoinColumn(name = "admin_id", nullable = false,
-            foreignKey = @ForeignKey(name = "vehicle_admin_id_fkey"))
+    @JoinColumn(name = "admin_id", nullable = false)
     private Admin admin;
 
     @ManyToOne(optional = false, fetch = FetchType.LAZY)
-    @JoinColumn(name = "coordinates_id", nullable = false,
-            foreignKey = @ForeignKey(name = "vehicle_coordinates_id_fkey"))
+    @JoinColumn(name = "coordinates_id", nullable = false)
     private Coordinates coordinates;
 
     @PrePersist
-    public void prePersist() { // автоматически перед первым INSERT
+    public void prePersist() {
         if (creationTime == null) {
             creationTime = LocalDateTime.now();
         }

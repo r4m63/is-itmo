@@ -14,12 +14,7 @@ import java.util.List;
 @AllArgsConstructor
 @Builder
 @Entity
-@Table(
-        name = "coordinates",
-        uniqueConstraints = {
-                @UniqueConstraint(name = "coordinates_xy_uniq", columnNames = {"x", "y"})
-        }
-)
+@Table(name = "coordinates")
 public class Coordinates {
 
     @Id

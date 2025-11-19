@@ -23,7 +23,7 @@ public class VehicleWsService {
         for (Session s : sessions) {
             if (s.isOpen()) {
                 try {
-                    s.getAsyncRemote().sendText(text);
+                    s.getAsyncRemote().sendText(text); // у объекта Session RemoteEndpoint и через него идут асинхронно данные по открытому WebSocket
                 } catch (IllegalStateException ignored) {
 
                 }
