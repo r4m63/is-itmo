@@ -97,11 +97,9 @@ public class VehicleDao {
                 .getResultList();
 
         // Сохраняем исходный порядок (IN не гарантирует порядок)
-        // надо чтобы был такой порядок: ids = [42, 7, 15, 3]
-        // IN запрос мог вернуть items = [V(7), V(3), V(42), V(15)]
-        Map<Long, Integer> rank = new HashMap<>(ids.size() * 2); // *2 чтобы не было ресайз, ёмкость таблицы должна быть >= n / 0.75 ~ 1.33n
+        Map<Long, Integer> rank = new HashMap<>(ids.size() * 2);
         for (int i = 0; i < ids.size(); i++)
-            rank.put(ids.get(i), i); // мапа id -> позиция
+            rank.put(ids.get(i), i);
         items.sort(Comparator.comparingInt(v -> rank.getOrDefault(v.getId(), Integer.MAX_VALUE)));
 
         return items;
@@ -145,6 +143,33 @@ public class VehicleDao {
                 .setParameter("to", toRef)
                 .setParameter("from", fromCoordinatesId)
                 .executeUpdate();
+    }
+
+    // ===== БИЗНЕС-УНИКАЛЬНОСТЬ: имя Vehicle.name =====
+
+    /**
+     * Проверка существования ТС с данным именем (для create/import).
+     */
+    public boolean existsByName(String name) {
+        if (name == null) return false;
+        Long cnt = em.createQuery(
+                        "select count(v) from Vehicle v where v.name = :name", Long.class)
+                .setParameter("name", name)
+                .getSingleResult();
+        return cnt != null && cnt > 0;
+    }
+
+    /**
+     * Проверка существования ДРУГОГО ТС с таким же именем (для update).
+     */
+    public boolean existsByNameAndIdNot(String name, Long id) {
+        if (name == null || id == null) return false;
+        Long cnt = em.createQuery(
+                        "select count(v) from Vehicle v where v.name = :name and v.id <> :id", Long.class)
+                .setParameter("name", name)
+                .setParameter("id", id)
+                .getSingleResult();
+        return cnt != null && cnt > 0;
     }
 
 }

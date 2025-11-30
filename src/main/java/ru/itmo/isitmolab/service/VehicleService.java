@@ -38,6 +38,9 @@ public class VehicleService {
     @Transactional
     public Long createNewVehicle(VehicleDto dto) {
 
+        // === БИЗНЕС-ОГРАНИЧЕНИЕ: уникальность имени ТС при создании ===
+        ensureVehicleNameUnique(dto.getName(), null);
+
         Coordinates coords = resolveCoordinatesForDto(dto);
 
         Vehicle v = VehicleDto.toEntity(dto, null);
@@ -53,6 +56,11 @@ public class VehicleService {
         Vehicle current = dao.findById(id)
                 .orElseThrow(() -> new WebApplicationException(
                         "Vehicle not found: " + id, Response.Status.NOT_FOUND));
+
+        // === БИЗНЕС-ОГРАНИЧЕНИЕ: уникальность имени ТС при обновлении ===
+        if (dto.getName() != null && !dto.getName().equals(current.getName())) {
+            ensureVehicleNameUnique(dto.getName(), id);
+        }
 
         if (dto.getCoordinatesId() != null || (dto.getCoordinatesX() != null && dto.getCoordinatesY() != null)) {
             Coordinates coords = resolveCoordinatesForDto(dto);
@@ -112,6 +120,12 @@ public class VehicleService {
     public void importVehicles(List<VehicleImportItemDto> items) {
         for (VehicleImportItemDto item : items) {
             VehicleDto dto = VehicleImportItemDto.toEntity(item);
+
+            // === БИЗНЕС-ОГРАНИЧЕНИЕ: уникальность имени ТС и при импорте ===
+            // Здесь можно решить: либо запрещать дубликаты, либо скипать/логировать.
+            // Сейчас — жёсткий запрет: если имя уже есть, кидаем 409.
+            ensureVehicleNameUnique(dto.getName(), null);
+
             Coordinates coords = resolveCoordinatesForDto(dto);
             Vehicle v = VehicleDto.toEntity(dto, null);
             v.setCoordinates(coords);
@@ -132,6 +146,43 @@ public class VehicleService {
                 .stream()
                 .map(VehicleImportHistoryItemDto::toDto)
                 .collect(Collectors.toList());
+    }
+
+    /**
+     * Бизнес-ограничение: имя транспортного средства (Vehicle.name)
+     * должно быть уникальным в системе (без UNIQUE в БД).
+     *
+     * @param name      имя ТС
+     * @param excludeId id ТС, которое сейчас обновляем (null для создания/импорта)
+     */
+    private void ensureVehicleNameUnique(String name, Long excludeId) {
+        if (name == null || name.isBlank()) {
+            // Формальная проверка NotBlank делается Bean Validation,
+            // здесь только уникальность.
+            return;
+        }
+
+        boolean exists;
+
+        if (excludeId == null) {
+            exists = dao.existsByName(name);
+        } else {
+            exists = dao.existsByNameAndIdNot(name, excludeId);
+        }
+
+        if (exists) {
+            var body = Map.of(
+                    "error", "VEHICLE_NAME_NOT_UNIQUE",
+                    "message", "Транспортное средство с именем '" + name + "' уже существует"
+            );
+
+            throw new WebApplicationException(
+                    Response.status(Response.Status.CONFLICT)
+                            .type(MediaType.APPLICATION_JSON_TYPE)
+                            .entity(body)
+                            .build()
+            );
+        }
     }
 
 }

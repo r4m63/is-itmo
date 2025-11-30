@@ -86,18 +86,51 @@ public class CoordinatesDao {
     }
 
     public Coordinates findOrCreateByXY(Double x, Float y) {
-        Coordinates c = em.createQuery(
+
+        // 1. Сначала пробуем найти уже существующие координаты
+        Coordinates existing = em.createQuery(
                         "select c from Coordinates c where c.x = :x and c.y = :y", Coordinates.class)
                 .setParameter("x", x)
                 .setParameter("y", y)
+                .setMaxResults(1)
                 .getResultStream()
                 .findFirst()
                 .orElse(null);
-        if (c != null) return c;
 
-        c = Coordinates.builder().x(x).y(y).build();
-        em.persist(c);
-        return c;
+        if (existing != null) {
+            return existing;
+        }
+
+        // 2. Если нет — делаем "мягкий" insert с ON CONFLICT DO NOTHING.
+        //    ВАЖНО: этот запрос НЕ бросает ошибку, даже если другая транзакция
+        //    уже успела вставить координаты с такими же (x, y).
+        em.createNativeQuery("""
+                        INSERT INTO coordinates (x, y)
+                        VALUES (:x, :y)
+                        ON CONFLICT (x, y) DO NOTHING
+                        """)
+                .setParameter("x", x)
+                .setParameter("y", y)
+                .executeUpdate();
+
+        // 3. После этого координаты либо только что созданы нами,
+        //    либо уже были созданы параллельной транзакцией.
+        //    В любом случае — теперь они точно есть, просто достаём их.
+        Coordinates result = em.createQuery(
+                        "select c from Coordinates c where c.x = :x and c.y = :y", Coordinates.class)
+                .setParameter("x", x)
+                .setParameter("y", y)
+                .setMaxResults(1)
+                .getResultStream()
+                .findFirst()
+                .orElse(null);
+
+        if (result == null) {
+            // Теоретически сюда попасть нельзя, но на всякий случай:
+            throw new IllegalStateException("Coordinates not found after upsert for x=" + x + ", y=" + y);
+        }
+
+        return result;
     }
 
     public Map<Long, Integer> countVehiclesForCoordinatesIds(List<Long> ids) {
