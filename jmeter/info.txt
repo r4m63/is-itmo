@@ -32,7 +32,6 @@ UPDATE SAME
     При конкурентном обновлении одной и той же записи vehicle оба запроса завершаются успешно (HTTP 204), однако
     финальное состояние объекта зависит от порядка коммита транзакций. Это приводит к аномалии типа lost update:
     изменения одного пользователя могут быть бесшумно перезаписаны другим
-    ТУТ МОЖНО НАКИНУТЬ @VERSION НА ENTITY
 
 
 
@@ -43,8 +42,16 @@ DELETE SAME
     T2: (в начале видел, что запись есть (existsById)), но когда доходит до коммита, Hibernate/JTA внезапно обнаруживают: строки с id=10 уже нет (её удалил T1)
     Т2: OptimisticLockException, Из-за OptimisticLockException JTA-менеджер помечает транзакцию T2 как rollback-only и при коммите падает с: RollbackException
 
+    я сделал:
+        @Version
+        @Column(name = "version", nullable = false)
+        private Integer version;
+    и так же catch (OptimisticLockException)
+
 
 3_UniqueNameConcurrentCreate
+
+insert 2 entities with same business-unique name
     этим тестом доказывается, что чисто программная проверка existsByName + отсутствие UNIQUE в БД не гарантирует уникальность под конкуренцией.
 
     Поток 1 и поток 2 одновременно заходят в createNewVehicle.
@@ -53,5 +60,9 @@ DELETE SAME
     Оба делают save() → в таблице оказываются две строки с одинаковым name.
     Оба получают 201 Created.
 
-    сделай serializable isolation
+    serializable isolation или pessimistic locking
 
+    - LockModeType.PESSIMISTIC_WRITE применяется только для существующих записей (при чтении и обновлении), чтобы обеспечить атомарность и избежать конфликтов между транзакциями.
+
+
+update 2 entities to same business-unique name

@@ -1,9 +1,7 @@
 package ru.itmo.isitmolab.dao;
 
 import jakarta.enterprise.context.ApplicationScoped;
-import jakarta.persistence.EntityGraph;
-import jakarta.persistence.EntityManager;
-import jakarta.persistence.PersistenceContext;
+import jakarta.persistence.*;
 import jakarta.persistence.criteria.*;
 import ru.itmo.isitmolab.dto.GridTableRequest;
 import ru.itmo.isitmolab.model.Coordinates;
@@ -171,5 +169,61 @@ public class VehicleDao {
                 .getSingleResult();
         return cnt != null && cnt > 0;
     }
+
+    public Vehicle findByNameWithPessimisticLock(String name) {
+        try {
+            return em.createQuery(
+                            "select v from Vehicle v where v.name = :name", Vehicle.class)
+                    .setParameter("name", name)
+                    .setLockMode(LockModeType.PESSIMISTIC_WRITE) // Блокируем запись
+                    .setMaxResults(1)
+                    .getSingleResult();
+        } catch (NoResultException e) {
+            return null;
+        }
+    }
+
+    public Vehicle findByNameAndIdNotWithPessimisticLock(String name, Long excludeId) {
+        try {
+            return em.createQuery(
+                            "select v from Vehicle v where v.name = :name and v.id != :excludeId", Vehicle.class)
+                    .setParameter("name", name)
+                    .setParameter("excludeId", excludeId)
+                    .setLockMode(LockModeType.PESSIMISTIC_WRITE) // Блокируем запись
+                    .setMaxResults(1)
+                    .getSingleResult();
+        } catch (NoResultException e) {
+            return null;
+        }
+    }
+
+    public Vehicle findByNameWithOptimisticLock(String name) {
+        try {
+            return em.createQuery(
+                            "select v from Vehicle v where v.name = :name", Vehicle.class)
+                    .setParameter("name", name)
+                    .setLockMode(LockModeType.OPTIMISTIC) // Используем Optimistic Lock
+                    .setMaxResults(1)
+                    .getSingleResult();
+        } catch (NoResultException e) {
+            return null;
+        }
+    }
+
+    public Vehicle findByNameAndIdNotWithOptimisticLock(String name, Long excludeId) {
+        try {
+            return em.createQuery(
+                            "select v from Vehicle v where v.name = :name and v.id != :excludeId", Vehicle.class)
+                    .setParameter("name", name)
+                    .setParameter("excludeId", excludeId)
+                    .setLockMode(LockModeType.OPTIMISTIC) // Используем Optimistic Lock
+                    .setMaxResults(1)
+                    .getSingleResult();
+        } catch (NoResultException e) {
+            return null;
+        }
+    }
+
+
 
 }

@@ -2,6 +2,7 @@ package ru.itmo.isitmolab.service;
 
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
+import jakarta.persistence.OptimisticLockException;
 import jakarta.transaction.Transactional;
 import jakarta.ws.rs.WebApplicationException;
 import jakarta.ws.rs.core.MediaType;
@@ -37,18 +38,21 @@ public class VehicleService {
 
     @Transactional
     public Long createNewVehicle(VehicleDto dto) {
-
         // === БИЗНЕС-ОГРАНИЧЕНИЕ: уникальность имени ТС при создании ===
-        ensureVehicleNameUnique(dto.getName(), null);
+        ensureVehicleNameUnique(dto.getName(), null);  // Проверка уникальности имени ТС перед созданием
 
         Coordinates coords = resolveCoordinatesForDto(dto);
 
         Vehicle v = VehicleDto.toEntity(dto, null);
         v.setCoordinates(coords);
 
-        dao.save(v);
-        wsHub.broadcastText("refresh");
-        return v.getId();
+        try {
+            dao.save(v);  // Hibernate будет отслеживать версию и выбросит исключение OptimisticLockException, если запись была изменена.
+            wsHub.broadcastText("refresh");
+            return v.getId();
+        } catch (OptimisticLockException e) {
+            throw new WebApplicationException("The vehicle name was already used by another transaction.", Response.Status.CONFLICT);
+        }
     }
 
     @Transactional
@@ -68,9 +72,13 @@ public class VehicleService {
         }
 
         VehicleDto.toEntity(dto, current);
+
+        // Блокируем запись для записи перед обновлением
         dao.save(current);
         wsHub.broadcastText("refresh");
     }
+
+
 
     public VehicleDto getVehicleById(Long id) {
         Vehicle v = dao.findById(id)
@@ -81,12 +89,12 @@ public class VehicleService {
 
     @Transactional
     public void deleteVehicleById(Long id) {
-        if (!dao.existsById(id)) {
-            throw new WebApplicationException(
-                    "Vehicle not found: " + id, Response.Status.NOT_FOUND);
+        try {
+            dao.findById(id).orElseThrow(() -> new WebApplicationException("Vehicle not found: " + id, Response.Status.NOT_FOUND));
+            dao.deleteById(id);
+        } catch (OptimisticLockException e) {
+            throw new WebApplicationException("The vehicle was already deleted by another user.", Response.Status.CONFLICT);
         }
-        dao.deleteById(id);
-        wsHub.broadcastText("refresh");
     }
 
     public GridTableResponse<VehicleDto> queryVehiclesTable(GridTableRequest req) {
@@ -148,29 +156,22 @@ public class VehicleService {
                 .collect(Collectors.toList());
     }
 
-    /**
-     * Бизнес-ограничение: имя транспортного средства (Vehicle.name)
-     * должно быть уникальным в системе (без UNIQUE в БД).
-     *
-     * @param name      имя ТС
-     * @param excludeId id ТС, которое сейчас обновляем (null для создания/импорта)
-     */
-    private void ensureVehicleNameUnique(String name, Long excludeId) {
+    @Transactional
+    public void ensureVehicleNameUnique(String name, Long excludeId) {
         if (name == null || name.isBlank()) {
-            // Формальная проверка NotBlank делается Bean Validation,
-            // здесь только уникальность.
             return;
         }
 
-        boolean exists;
+        Vehicle existing;
 
+        // Проверяем уникальность с учетом исключения текущего id для обновлений
         if (excludeId == null) {
-            exists = dao.existsByName(name);
+            existing = dao.findByNameWithOptimisticLock(name);
         } else {
-            exists = dao.existsByNameAndIdNot(name, excludeId);
+            existing = dao.findByNameAndIdNotWithOptimisticLock(name, excludeId);
         }
 
-        if (exists) {
+        if (existing != null) {
             var body = Map.of(
                     "error", "VEHICLE_NAME_NOT_UNIQUE",
                     "message", "Транспортное средство с именем '" + name + "' уже существует"
@@ -184,5 +185,7 @@ public class VehicleService {
             );
         }
     }
+
+
 
 }
