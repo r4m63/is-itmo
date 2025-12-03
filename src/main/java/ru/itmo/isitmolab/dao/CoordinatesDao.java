@@ -87,7 +87,7 @@ public class CoordinatesDao {
 
     public Coordinates findOrCreateByXY(Double x, Float y) {
 
-        // 1. Сначала пробуем найти уже существующие координаты
+        // попытка найти уже существующие координаты
         Coordinates existing = em.createQuery(
                         "select c from Coordinates c where c.x = :x and c.y = :y", Coordinates.class)
                 .setParameter("x", x)
@@ -101,9 +101,8 @@ public class CoordinatesDao {
             return existing;
         }
 
-        // 2. Если нет — делаем "мягкий" insert с ON CONFLICT DO NOTHING.
-        //    ВАЖНО: этот запрос НЕ бросает ошибку, даже если другая транзакция
-        //    уже успела вставить координаты с такими же (x, y).
+        // Если нет - insert с ON CONFLICT DO NOTHING
+        // Этот запрос НЕ бросает ошибку, даже если другая транзакция уже успела вставить координаты с такими же (x, y)
         em.createNativeQuery("""
                         INSERT INTO coordinates (x, y)
                         VALUES (:x, :y)
@@ -113,9 +112,8 @@ public class CoordinatesDao {
                 .setParameter("y", y)
                 .executeUpdate();
 
-        // 3. После этого координаты либо только что созданы нами,
-        //    либо уже были созданы параллельной транзакцией.
-        //    В любом случае — теперь они точно есть, просто достаём их.
+        // Координаты либо только что созданы, либо уже были созданы параллельной транзакцией.
+        // В любом случае - теперь они точно есть, просто достаём их.
         Coordinates result = em.createQuery(
                         "select c from Coordinates c where c.x = :x and c.y = :y", Coordinates.class)
                 .setParameter("x", x)
@@ -126,7 +124,7 @@ public class CoordinatesDao {
                 .orElse(null);
 
         if (result == null) {
-            // Теоретически сюда попасть нельзя, но на всякий случай:
+            // Теоретически сюда попасть нельзя
             throw new IllegalStateException("Coordinates not found after upsert for x=" + x + ", y=" + y);
         }
 

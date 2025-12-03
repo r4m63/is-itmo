@@ -9,9 +9,6 @@ import {
     ModalContent,
     ModalFooter,
     ModalHeader,
-    Popover,
-    PopoverContent,
-    PopoverTrigger,
     Select,
     SelectItem,
     useDisclosure
@@ -406,61 +403,39 @@ export default function MainPage() {
                 credentials: 'include',
                 body: JSON.stringify(parsed),
             });
-            // if (response.ok) {
-            //     refreshGrid();
-            //     // onOpenChange(false);
-            //     toast.success("Сохранено");
-            // } else {
-            //     switch (response.status) {
-            //         case 401:
-            //             setIsAuthed(false);
-            //             toast.error('Not correct credentials');
-            //             break;
-            //         default:
-            //             toast.error(`Error: ${response.status} - ${response.statusText}`);
-            //             break;
-            //     }
-            // }
+
             if (response.ok) {
                 refreshGrid();
                 toast.success("Сохранено");
-                return;
-            }
-
-            let errorBody = null;
-            try {
-                errorBody = await response.json();
-            } catch (parseErr) {
-                // тело не JSON - null
-            }
-
-            // if (response.status === 401) {
-            //     setIsAuthed(false);
-            //     toast.error("Not correct credentials");
-            // } else 
-            if (response.status === 400 && errorBody) {
-                if (Array.isArray(errorBody.errors) && errorBody.errors.length > 0) {
-                    const lines = errorBody.errors.map(err => {
-                        const rowPart = err.rowNumber != null
-                            ? `Элемент ${err.rowNumber}: `
-                            : "";
-                        return rowPart + err.message;
-                    });
-
-                    toast.error(
-                        <div>
-                            {lines.map((line, idx) => (
-                                <div key={idx}>{line}</div>
-                            ))}
-                        </div>
-                    );
-                } else if (errorBody.message) {
-                    toast.error(errorBody.message);
-                } else {
-                    toast.error("Ошибка валидации (400)");
-                }
             } else {
-                toast.error(`Error: ${response.status} - ${response.statusText}`);
+                const errorData = await response.json().catch(() => ({}));
+                switch (response.status) {
+                    case 400:
+                        if (Array.isArray(errorData.errors) && errorData.errors.length > 0) {
+                            const lines = errorData.errors.map(err => {
+                                const rowPart = err.rowNumber != null
+                                    ? `Элемент ${err.rowNumber}: `
+                                    : "";
+                                return rowPart + err.message;
+                            });
+
+                            toast.error(
+                                <div>
+                                    {lines.map((line, idx) => (
+                                        <div key={idx}>{line}</div>
+                                    ))}
+                                </div>
+                            );
+                        } else if (errorData.message) {
+                            toast.error(errorData.message);
+                        } else {
+                            toast.error("Ошибка валидации (400)");
+                        }
+                        break;
+                    default:
+                        toast.error(errorData.message || `Error: ${response.status} - ${response.statusText}`);
+                        break;
+                }
             }
         } catch (err) {
             console.error(err);
@@ -514,7 +489,8 @@ export default function MainPage() {
                             <Button color="warning" className={styles.control} onPress={handleResetFilters}>
                                 Сбросить фильтры
                             </Button>
-                            <Button color="primary" className={styles.control} onPress={() => navigate("/coordinates")}>
+                            <Button color="primary" className={styles.control}
+                                    onPress={() => navigate("/coordinates")}>
                                 Coordinates
                             </Button>
                             <input
@@ -673,7 +649,8 @@ export default function MainPage() {
                                     <Input type="number" label="Мощность двигателя" variant="bordered"
                                            value={enginePower} onChange={(e) => setEnginePower(e.target.value)}
                                            min={0}/>
-                                    <Input type="number" label="Кол-во колёс" variant="bordered" value={numberOfWheels}
+                                    <Input type="number" label="Кол-во колёс" variant="bordered"
+                                           value={numberOfWheels}
                                            onChange={(e) => setNumberOfWheels(e.target.value)} isRequired min={1}/>
                                 </div>
 
@@ -686,7 +663,8 @@ export default function MainPage() {
 
                                 <div className="grid grid-cols-2 gap-3">
                                     <Input type="number" label="Расход топлива" variant="bordered"
-                                           value={fuelConsumption} onChange={(e) => setFuelConsumption(e.target.value)}
+                                           value={fuelConsumption}
+                                           onChange={(e) => setFuelConsumption(e.target.value)}
                                            isRequired/>
                                     <Select label="Тип топлива" variant="bordered"
                                             selectedKeys={fuelType ? [fuelType] : []}

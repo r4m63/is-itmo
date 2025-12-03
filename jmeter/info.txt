@@ -22,11 +22,9 @@ UPDATE SAME
 
     РЕШЕНИЕ:
         INSERT ... ON CONFLICT (x, y) DO NOTHING
-        Это как раз идеально под твою задачу:
         если координат нет → вставятся,
         если уже есть → запрос просто не сделает ничего, без ошибки,
         потом мы делаем обычный SELECT и получаем одну и ту же строку во всех потоках.
-
 
     + LOST UPDATE
     При конкурентном обновлении одной и той же записи vehicle оба запроса завершаются успешно (HTTP 204), однако
@@ -48,6 +46,10 @@ DELETE SAME
         private Integer version;
     и так же catch (OptimisticLockException)
 
+    В сценарии одновременного удаления одной и той же сущности (DELETE SAME) при уровне изоляции SERIALIZABLE и использовании оптимистической блокировки (@Version) вторая транзакция (T2) при попытке удаления получает ошибку сериализации в PostgreSQL (PSQLException с SQLState 40001, сообщение could not serialize access due to concurrent delete).
+    Hibernate конвертирует эту ошибку в LockAcquisitionException, а затем в OptimisticLockException, поскольку удаление выполняется по условию id + version и трактуется как нарушение оптимистической блокировки. При завершении транзакции JTA-менеджер (Arjuna) фиксирует это как неуспешное beforeCompletion, помечает транзакцию как rollback-only и логирует предупреждение (WARN) о неудачном коммите.
+    На уровне REST-слоя исключение приходит в виде RollbackException с вложенным OptimisticLockException. В RollbackExceptionMapper это исключение распознаётся и преобразуется в HTTP-ответ 409 CONFLICT с сообщением Сущность была изменена или удалена другим пользователем, что соответствует бизнес-сценарию конкурентного удаления.
+
 
 3_UniqueNameConcurrentCreate
 
@@ -68,5 +70,75 @@ insert 2 entities with same business-unique name
 
     Pessimistic Locking для INSERT в базе данных не блокирует процесс вставки данных, так как операции вставки с уникальными значениями (например, уникальные имена) могут привести к ошибке в базе данных (например, duplicate key violation).
     Важно отметить, что Pessimistic Locking блокирует запись только на уровне чтения данных (например, при проверке наличия записи), а не при самом INSERT. Таким образом, два параллельных запроса могут одновременно пройти через проверку существования и попытаться вставить запись с одинаковым именем.
+
+---------- NEW:
+    На коммите одной транзакции Postgres кидает ошибку сериализации (SQLSTATE 40001), JTA (Narayana) оборачивает это в LocalXAException: Could not commit local transaction, ты видишь:
+    ARJUNA016039: onePhaseCommit ... failed with exception XAException.XA_RBROLLBACK
+    IJ001156: Could not commit local transaction
+
+    И твой кейс — классический пример из доков Postgres:
+
+    Две транзакции каждая проверяют «а такой записи ещё нет?» и потом вставляют.
+    Если обе закоммитить — это не будет сериализуемо, поэтому одну придётся откатить.
+
+    VehicleNameNotUniqueException выбрасывается только внутри checkUniqueVehicleName.
+    В твоём сценарии обе транзакции проходят checkUniqueVehicleName без проблем:
+    на момент SELECT записи ещё нет;
+    SERIALIZABLE не блокирует вторую транзакцию, он просто потом поймает конфликт.
+    Реальный конфликт возникает при коммите и выражается в другом исключении (ошибка сериализации от БД → LocalXAException / RollbackException и т.п.).
+    Это исключение не наследуется от BusinessException, поэтому:
+    BusinessExceptionMapper его не обрабатывает,
+    JAX-RS видит просто «какой-то RuntimeException» → шлёт 500.
+
+    ==
+    SQLState 40001 — это serialization failure в PostgreSQL, и на уровне драйвера это org.postgresql.util.PSQLException, который наследуется от java.sql.SQLException.
+    В твоём стекe (CDI @Transactional + WildFly) эта PSQLException при коммите оборачивается в jakarta.transaction.TransactionalException (через JTA / CDI-интерсептор).
+
+    500 - тк В RollbackExceptionMapper ты получаешь уже другой объект: jakarta.transaction.RollbackException.
+             И его cause-цепочка может быть:
+             либо полной (там реально лежит тот самый LocalXAException → ResourceException → PSQLException),
+             либо урезанной (там вообще нет SQLException, только «обёртка» типа LocalXAException).
+             - иногда контейнер логирует одну цепочку стека, а наружу кидает уже другую, с потерянной причиной.
+
+    1. Условие, при котором возникает проблема
+    Сценарий:
+    В БД нет уникального ограничения по vehicle.name, уникальность проверяется только в бизнес-логике методом checkUniqueVehicleName.
+    Уровень изоляции транзакций – SERIALIZABLE (PostgreSQL, SSI).
+    Одновременно приходят два запроса POST /vehicle с одинаковым именем.
+    Обе транзакции:
+    выполняют checkUniqueVehicleName(dto.getName(), null) → делают SELECT и не находят запись;
+    создают сущность и вызывают dao.save(v).
+    На этапе коммита PostgreSQL в режиме SERIALIZABLE обнаруживает конфликт чтения/записи («две транзакции ведут себя так, что их невозможно упорядочить как последовательные») и откатывает одну транзакцию с ошибкой сериализации (ERROR: could not serialize access due to read/write dependencies among transactions, SQLSTATE 40001).
+
+    2. Какое исключение реально падает
+    На уровне драйвера БД генерируется:
+    org.postgresql.util.PSQLException c SQLState 40001.
+    Дальше в стекe сервера:
+    эта ошибка оборачивается в jakarta.resource.ResourceException / LocalXAException,
+    транзакционный менеджер (Arjuna/JTA) откатывает транзакцию и выбрасывает наружу jakarta.transaction.RollbackException, именно его видит слой JAX-RS.
+    То есть в REST-слой прилетает не PSQLException, а RollbackException, внутри которого информация о конкретном SQLState либо:
+    потеряна,
+    либо недоступна через getCause() в том виде, который ожидает наш код.
+
+    3. Почему возвращается 500 и почему не удаётся отловить «красиво»
+    С точки зрения приложения происходит следующее:
+    Сервисный метод createNewVehicle не выбрасывает наш доменный VehicleNameNotUniqueException, потому что обе параллельные транзакции успевают пройти проверку checkUniqueVehicleName (на момент проверки записи ещё нет).
+    При коммите одна транзакция падает с RollbackException, который попадает в RollbackExceptionMapper.
+    В RollbackExceptionMapper мы пытаемся:
+    пройтись по цепочке cause,
+    найти SQLException с sqlState = "40001",
+    и на основании этого вернуть 409 SERIALIZATION_CONFLICT.
+    Но на практике:
+    либо в цепочке cause нет ни одного SQLException,
+    либо до уровня JAX-RS доходит уже укороченный RollbackException без вложенной PSQLException.
+    В результате наши условия не срабатывают, и маппер попадает в дефолтную ветку:
+    Поэтому клиент получает HTTP 500 Internal Server Error с ошибкой "TRANSACTION_ROLLBACK", а не 409 с более осмысленным описанием конкурентного конфликта.
+
+    Можно написать так:
+    При одновременном создании двух сущностей Vehicle с одинаковым name при уровне изоляции SERIALIZABLE в PostgreSQL одна из транзакций откатывается с ошибкой сериализации (PSQLException, SQLSTATE 40001).
+    На стороне сервера эта ошибка оборачивается в jakarta.transaction.RollbackException, который попадает в JAX-RS слой. Однако информация о конкретном SQL-состоянии (40001) на этом уровне либо недоступна через getCause(), либо теряется при оборачивании в инфраструктурные исключения (ResourceException/LocalXAException).
+    В результате глобальный ExceptionMapper не может однозначно распознать именно конфликт сериализации и вернуть корректный код 409 CONFLICT. Вместо этого срабатывает дефолтная ветка RollbackExceptionMapper, и клиент получает ответ 500 Internal Server Error c обобщённой ошибкой "TRANSACTION_ROLLBACK".
+
+
 
 update 2 entities to same business-unique name

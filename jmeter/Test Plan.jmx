@@ -118,7 +118,7 @@
           </elementProp>
         </HTTPSamplerProxy>
         <hashTree/>
-        <HTTPSamplerProxy guiclass="HttpTestSampleGui" testclass="HTTPSamplerProxy" testname="IMPORT Vehicles">
+        <HTTPSamplerProxy guiclass="HttpTestSampleGui" testclass="HTTPSamplerProxy" testname="IMPORT Vehicles" enabled="true">
           <stringProp name="HTTPSampler.path">/app/api/vehicle/import</stringProp>
           <boolProp name="HTTPSampler.follow_redirects">true</boolProp>
           <stringProp name="HTTPSampler.method">POST</stringProp>
@@ -181,13 +181,13 @@
           <collectionProp name="Arguments.arguments">
             <elementProp name="vehicleId" elementType="Argument">
               <stringProp name="Argument.name">vehicleId</stringProp>
-              <stringProp name="Argument.value">39</stringProp>
+              <stringProp name="Argument.value">111</stringProp>
               <stringProp name="Argument.metadata">=</stringProp>
             </elementProp>
           </collectionProp>
         </Arguments>
         <hashTree/>
-        <HTTPSamplerProxy guiclass="HttpTestSampleGui" testclass="HTTPSamplerProxy" testname="UPDATE SAME Vehicle Concurent" enabled="false">
+        <HTTPSamplerProxy guiclass="HttpTestSampleGui" testclass="HTTPSamplerProxy" testname="UPDATE SAME Vehicle Concurent">
           <stringProp name="HTTPSampler.path">/app/api/vehicle/${vehicleId}</stringProp>
           <boolProp name="HTTPSampler.follow_redirects">true</boolProp>
           <stringProp name="HTTPSampler.method">PUT</stringProp>
@@ -254,7 +254,7 @@
           </ResultCollector>
           <hashTree/>
         </hashTree>
-        <HTTPSamplerProxy guiclass="HttpTestSampleGui" testclass="HTTPSamplerProxy" testname="DELETE SAME Vehicle Concurent">
+        <HTTPSamplerProxy guiclass="HttpTestSampleGui" testclass="HTTPSamplerProxy" testname="DELETE SAME Vehicle Concurent" enabled="false">
           <stringProp name="HTTPSampler.path">/app/api/vehicle/${vehicleId}</stringProp>
           <boolProp name="HTTPSampler.follow_redirects">true</boolProp>
           <stringProp name="HTTPSampler.method">DELETE</stringProp>

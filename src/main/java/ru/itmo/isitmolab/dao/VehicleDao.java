@@ -143,11 +143,6 @@ public class VehicleDao {
                 .executeUpdate();
     }
 
-    // ===== БИЗНЕС-УНИКАЛЬНОСТЬ: имя Vehicle.name =====
-
-    /**
-     * Проверка существования ТС с данным именем (для create/import).
-     */
     public boolean existsByName(String name) {
         if (name == null) return false;
         Long cnt = em.createQuery(
@@ -157,9 +152,6 @@ public class VehicleDao {
         return cnt != null && cnt > 0;
     }
 
-    /**
-     * Проверка существования ДРУГОГО ТС с таким же именем (для update).
-     */
     public boolean existsByNameAndIdNot(String name, Long id) {
         if (name == null || id == null) return false;
         Long cnt = em.createQuery(
@@ -224,6 +216,33 @@ public class VehicleDao {
         }
     }
 
+    public Optional<Vehicle> findByName(String name) {
+        if (name == null) return Optional.empty();
+        try {
+            Vehicle vehicle = em.createQuery(
+                            "select v from Vehicle v where v.name = :name", Vehicle.class)
+                    .setParameter("name", name)
+                    .setMaxResults(1)
+                    .getSingleResult();
+            return Optional.of(vehicle);
+        } catch (NoResultException e) {
+            return Optional.empty();
+        }
+    }
 
+    public Optional<Vehicle> findByNameAndIdNot(String name, Long excludeId) {
+        if (name == null || excludeId == null) return Optional.empty();
+        try {
+            Vehicle vehicle = em.createQuery(
+                            "select v from Vehicle v where v.name = :name and v.id != :excludeId", Vehicle.class)
+                    .setParameter("name", name)
+                    .setParameter("excludeId", excludeId)
+                    .setMaxResults(1)
+                    .getSingleResult();
+            return Optional.of(vehicle);
+        } catch (NoResultException e) {
+            return Optional.empty();
+        }
+    }
 
 }

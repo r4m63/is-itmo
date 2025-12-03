@@ -1,6 +1,6 @@
 [
   {
-    "name": "1",
+    "name": "11",
     "type": "CAR",
     "enginePower": 181,
     "numberOfWheels": 4,
@@ -14,7 +14,7 @@
     }
   },
   {
-    "name": "2",
+    "name": "22",
     "type": "MOTORCYCLE",
     "enginePower": 95,
     "numberOfWheels": 2,
@@ -28,7 +28,7 @@
     }
   },
   {
-    "name": "3",
+    "name": "33",
     "type": "HELICOPTER",
     "enginePower": 2000,
     "numberOfWheels": 6,
