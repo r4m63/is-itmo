@@ -31,8 +31,8 @@ public class BusinessExceptionMapper implements ExceptionMapper<BusinessExceptio
 
         if (ex instanceof VehicleNameNotUniqueException vnue) {
             Map<String, Object> body = new LinkedHashMap<>();
-            body.put("error", vnue.getErrorCode());      // "VEHICLE_NAME_NOT_UNIQUE"
-            body.put("message", vnue.getMessage());      // "ТС с именем 'X' уже существует"
+            body.put("error", vnue.getErrorCode());
+            body.put("message", vnue.getMessage());
             body.put("vehicleName", vnue.getVehicleName());
 
             return Response.status(Response.Status.CONFLICT)
@@ -42,7 +42,7 @@ public class BusinessExceptionMapper implements ExceptionMapper<BusinessExceptio
         }
 
 
-        // 4. Дефолтный вариант для других BusinessException
+        // Дефолтный вариант для других BusinessException
         Map<String, Object> body = new LinkedHashMap<>();
         body.put("error", ex.getErrorCode());
         body.put("message", ex.getMessage());

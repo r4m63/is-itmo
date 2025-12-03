@@ -26,10 +26,8 @@ public class VehicleService {
 
     @Inject
     private VehicleDao dao;
-
     @Inject
     private VehicleWsService wsHub;
-
     @Inject
     private CoordinatesDao coordinatesDao;
 
@@ -110,25 +108,6 @@ public class VehicleService {
         }
         throw new WebApplicationException("coordinatesId или (coordinatesX, coordinatesY) — обязательны",
                 Response.Status.BAD_REQUEST);
-    }
-
-    public Optional<String> validateUniqueVehicleName(String name, Long excludeId) {
-        if (name == null || name.isBlank()) {
-            return Optional.empty();
-        }
-
-        Optional<Vehicle> existing;
-        if (excludeId == null) {
-            existing = dao.findByName(name);
-        } else {
-            existing = dao.findByNameAndIdNot(name, excludeId);
-        }
-
-        if (existing.isPresent()) {
-            return Optional.of("Транспортное средство с именем '" + name + "' уже существует");
-        }
-
-        return Optional.empty();
     }
 
     @Transactional

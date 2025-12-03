@@ -1,3 +1,11 @@
+BEGIN;
+SET session_replication_role = 'replica';
+TRUNCATE TABLE vehicle_import_operation, vehicle, coordinates
+    RESTART IDENTITY CASCADE;
+SET session_replication_role = 'origin';
+COMMIT;
+
+
 CREATE TABLE IF NOT EXISTS coordinates
 (
     id BIGSERIAL PRIMARY KEY,
@@ -8,6 +16,7 @@ CREATE TABLE IF NOT EXISTS coordinates
 CREATE TABLE IF NOT EXISTS vehicle
 (
     id                 BIGSERIAL PRIMARY KEY,
+    version            INT                DEFAULT 0,
     name               TEXT      NOT NULL CHECK (length(btrim(name)) > 0),
     creation_time      TIMESTAMP NOT NULL DEFAULT now(),
     type               TEXT      NOT NULL CHECK (type IN ('CAR', 'HELICOPTER', 'MOTORCYCLE', 'CHOPPER')),
@@ -26,7 +35,6 @@ CREATE TABLE IF NOT EXISTS vehicle_import_operation
     imported_count INTEGER,
     creation_time  TIMESTAMP NOT NULL DEFAULT now()
 );
-
 
 
 -- 1) Любой объект с минимальным distance_travelled (среди NOT NULL)

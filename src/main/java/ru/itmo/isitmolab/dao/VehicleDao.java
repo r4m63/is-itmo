@@ -231,6 +231,7 @@ public class VehicleDao {
     }
 
     public Optional<Vehicle> findByNameAndIdNot(String name, Long excludeId) {
+        // excludeId - при update проверить уникальность имени, исключая эту запись (есть ли другое ТС с таким именем)
         if (name == null || excludeId == null) return Optional.empty();
         try {
             Vehicle vehicle = em.createQuery(
