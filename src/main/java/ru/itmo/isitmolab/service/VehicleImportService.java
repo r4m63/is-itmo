@@ -42,40 +42,53 @@ public class VehicleImportService {
     @Transactional
     public void importVehicles(List<VehicleImportItemDto> items) {
 
-        // VALIDATION
-        List<VehicleImportErrors.RowError> validationErrors = new ArrayList<>();
-        for (int i = 0; i < items.size(); i++) {
-            VehicleImportItemDto item = items.get(i);
-            Set<ConstraintViolation<VehicleImportItemDto>> violations = validator.validate(item);
+        int importedCount = 0;
 
-            for (ConstraintViolation<VehicleImportItemDto> violation : violations) {
-                validationErrors.add(new VehicleImportErrors.RowError(
-                        i + 1,
-                        violation.getPropertyPath().toString(),
-                        violation.getMessage()
-                ));
+        try {
+            // VALIDATION
+            List<VehicleImportErrors.RowError> validationErrors = new ArrayList<>();
+            for (int i = 0; i < items.size(); i++) {
+                VehicleImportItemDto item = items.get(i);
+                Set<ConstraintViolation<VehicleImportItemDto>> violations = validator.validate(item);
+
+                for (ConstraintViolation<VehicleImportItemDto> violation : violations) {
+                    validationErrors.add(new VehicleImportErrors.RowError(
+                            i + 1,
+                            violation.getPropertyPath().toString(),
+                            violation.getMessage()
+                    ));
+                }
             }
+
+            if (!validationErrors.isEmpty()) {
+                throw new VehicleValidationException("Validation failed", validationErrors);
+            }
+
+            // IMPORT
+            for (VehicleImportItemDto item : items) {
+                VehicleDto dto = VehicleImportItemDto.toEntity(item);
+
+                // БИЗНЕС-ОГРАНИЧЕНИЕ: уникальность имени
+                vehicleService.checkUniqueVehicleName(dto.getName(), null);
+
+                Coordinates coords = vehicleService.resolveCoordinatesForDto(dto);
+                Vehicle v = VehicleDto.toEntity(dto, null);
+                v.setCoordinates(coords);
+                dao.save(v);
+
+                importedCount++;
+            }
+
+            wsHub.broadcastText("refresh");
+
+            self.logImportOperation(true, importedCount);
+
+        } catch (Exception e) {
+            self.logImportOperation(false, importedCount);
+            throw e;
         }
-
-        if (!validationErrors.isEmpty())
-            throw new VehicleValidationException("Validation failed", validationErrors);
-
-        // IMPORT
-        for (VehicleImportItemDto item : items) {
-            VehicleDto dto = VehicleImportItemDto.toEntity(item);
-
-            // CONSTRAINT
-            vehicleService.checkUniqueVehicleName(dto.getName(), null);
-
-            Coordinates coords = vehicleService.resolveCoordinatesForDto(dto);
-            Vehicle v = VehicleDto.toEntity(dto, null);
-            v.setCoordinates(coords);
-            dao.save(v);
-        }
-
-        wsHub.broadcastText("refresh");
-        self.logImportOperation(true, items.size());
     }
+
 
     @Transactional(Transactional.TxType.REQUIRES_NEW)
     public void logImportOperation(boolean success, Integer importedCount) {
