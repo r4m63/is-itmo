@@ -8,8 +8,10 @@ import jakarta.ws.rs.ext.ExceptionMapper;
 import jakarta.ws.rs.ext.Provider;
 
 import java.sql.SQLException;
+import java.util.ArrayDeque;
 import java.util.LinkedHashMap;
 import java.util.Map;
+import java.util.Objects;
 
 @Provider
 public class RollbackExceptionMapper implements ExceptionMapper<RollbackException> {
@@ -31,8 +33,7 @@ public class RollbackExceptionMapper implements ExceptionMapper<RollbackExceptio
         }
 
         // SERIALIZABLE-конфликт: SQLException с SQLState=40001
-        SQLException sqlEx = findCause(ex, SQLException.class);
-        if (sqlEx != null && "40001".equals(sqlEx.getSQLState())) {
+        if (hasSqlState(ex, "40001")) {
             Map<String, Object> body = new LinkedHashMap<>();
             body.put("error", "SERIALIZATION_CONFLICT");
             body.put("message", "Конкурентный доступ, повторите запрос");
@@ -63,5 +64,27 @@ public class RollbackExceptionMapper implements ExceptionMapper<RollbackExceptio
             cause = cause.getCause();
         }
         return null;
+    }
+
+    private boolean hasSqlState(Throwable ex, String sqlState) {
+        if (ex == null || sqlState == null) return false;
+
+        ArrayDeque<Throwable> stack = new ArrayDeque<>();
+        stack.add(ex);
+
+        while (!stack.isEmpty()) {
+            Throwable cur = stack.pop();
+            if (cur instanceof SQLException sql && sqlState.equals(sql.getSQLState())) {
+                return true;
+            }
+            for (Throwable suppressed : cur.getSuppressed()) {
+                stack.add(suppressed);
+            }
+            Throwable cause = cur.getCause();
+            if (cause != null && cause != cur) {
+                stack.add(cause);
+            }
+        }
+        return false;
     }
 }
