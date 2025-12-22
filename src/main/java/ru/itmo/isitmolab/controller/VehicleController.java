@@ -73,7 +73,7 @@ public class VehicleController {
 
     @POST
     @Path("/import")
-    @Consumes({MediaType.APPLICATION_JSON, MediaType.APPLICATION_OCTET_STREAM})
+    @Consumes({MediaType.APPLICATION_JSON, MediaType.APPLICATION_OCTET_STREAM}) // двоичные данные без указания конкретного формата
     public Response importVehicles(InputStream importStream) {
         try {
             List<VehicleImportItemDto> items = parseImportFile(importStream);
