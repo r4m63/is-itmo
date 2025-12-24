@@ -1,0 +1,53 @@
+Карта типов «бинов» в Jakarta EE
+
+EJB (Enterprise Java Beans) — бизнес-компоненты с «тяжёлым» рантаймом: транзакции, безопасность, таймеры,
+асинхронность, пуллинг, (опционально) удалённые вызовы — «из коробки».
+
+    @Stateless — без состояния между вызовами; контейнер держит пул экземпляров. Хорошо для «сервисов».
+    @Stateful — состояние на клиента (сеанс); подходит для пошаговых/мастер-сценариев.
+    @Singleton — один экземпляр на приложение; есть управление конкурентным доступом.
+    @MessageDriven — обработчик сообщений JMS (асинхронный consumer).
+
+    Интерфейсы доступа: @Local, @Remote (для ремоута), @LocalBean (без интерфейса).
+    Транзакции: @TransactionAttribute(REQUIRED|REQUIRES_NEW|MANDATORY|SUPPORTS|NOT_SUPPORTED|NEVER),
+    @TransactionManagement(BEAN|CONTAINER).
+    Безопасность: @RolesAllowed, @PermitAll, @DenyAll, @RunAs.
+    Асинхронность: @Asynchronous (возврат Future/CompletionStage или void).
+    Таймеры: @Schedule(cron-like), @Schedules, @Timeout.
+    Жизненный цикл: @PostConstruct, @PreDestroy; для @Stateful — @Remove.
+    Для @Singleton: конкурентность @Lock(READ|WRITE), таймаут @AccessTimeout(ms).
+
+CDI-бины (Context and Dependency Injection) — универсальные управляемые контейнером классы: DI, скоупы,
+квалификаторы, события, продьюсеры, перехватчики, декораторы. Лёгкие, гибкие, часто основной выбор.
+
+    Внедрение: @Inject (в поля/конструкторы/сеттеры).
+    Именование для EL/JSF: @Named("name") (или без имени — берётся по умолчанию).
+    Квалификаторы (маркировка реализаций): @Qualifier + собственные аннотации (например, @PrimaryDb, @Mock).
+    Продьюсеры/диспозеры: @Produces (создание бина/ресурса), @Disposes (закрытие).
+    Стереотипы: @Stereotype — собрать набор аннотаций в одну.
+
+    Скоупы (контексты)
+    @ApplicationScoped — один на приложение.
+    @SessionScoped — на HTTP-сессию.
+    @RequestScoped — на запрос.
+    @ConversationScoped — управляемая «длинная» беседа (JSF use-case).
+    @Dependent — «без собственного контекста»: живёт столько, сколько потребитель (по умолчанию).
+
+    Перехватчики/декораторы/события
+    Перехватчики: @Interceptor + @AroundInvoke / @AroundConstruct; включение через @Priority или beans.xml.
+    Декораторы: @Decorator для прокидывания вызовов и добавления поведения.
+    События: Event<T>/@Observes/@ObservesAsync.
+    Транзакции и безопасность в CDI
+    Можно добавлять @Transactional (из jakarta.transaction) на методы CDI-бина для контейнерных транзакций.
+    Безопасность — через Jakarta Security или интеграцию сервера (также есть аннотации на методах/классах).
+
+JSF Managed Beans — устаревающее именование для Faces-бинов; сейчас вместо @ManagedBean почти всегда
+используют CDI + @Named.
+
+    Старый стиль: @ManagedBean, @RequestScoped/@SessionScoped из jakarta.faces.bean.*, @ViewScoped и т.д.
+    Современный стиль: CDI + @Named + JSF-скоупы (например, @ViewScoped из jakarta.faces.view.ViewScoped) или обычные CDI-скоупы.
+    Практика сегодня: не использовать @ManagedBean; использовать CDI-бины, чтобы иметь полноценный DI и кросс-интеграцию.
+
+JAX-RS ресурсы — классы-ресурсы REST (не «бины» по названию, но управляются контейнером и дружат с CDI).
+
+JPA Entities — сущности данных (POJO), не «бины» бизнес-логики, но часто инжектятся в бины через EntityManager.

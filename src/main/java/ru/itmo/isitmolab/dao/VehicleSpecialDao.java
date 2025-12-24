@@ -11,7 +11,7 @@ import java.util.*;
 @ApplicationScoped
 public class VehicleSpecialDao {
 
-    @PersistenceContext(unitName = "studsPU")
+    @PersistenceContext
     EntityManager em;
 
     @SuppressWarnings("unchecked")

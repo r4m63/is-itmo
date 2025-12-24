@@ -7,13 +7,15 @@ import jakarta.persistence.criteria.*;
 import ru.itmo.isitmolab.dto.GridTableRequest;
 import ru.itmo.isitmolab.model.Coordinates;
 import ru.itmo.isitmolab.util.GridTablePredicateBuilder;
+import ru.itmo.isitmolab.util.l2.L2CacheStats;
 
 import java.util.*;
 
+@L2CacheStats
 @ApplicationScoped
 public class CoordinatesDao {
 
-    @PersistenceContext(unitName = "studsPU")
+    @PersistenceContext
     EntityManager em;
 
     public void save(Coordinates c) {

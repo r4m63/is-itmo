@@ -42,8 +42,18 @@ public class VehicleService {
         v.setCoordinates(coords);
 
         dao.save(v);
+        dao.flush(); // важно для GenerationType.IDENTITY (TomEE/OpenJPA выставляет id только после flush/commit)
+        Long id = v.getId();
+        if (id == null) {
+            throw new WebApplicationException(
+                    Response.status(Response.Status.INTERNAL_SERVER_ERROR)
+                            .type(MediaType.APPLICATION_JSON_TYPE)
+                            .entity(Map.of("message", "Vehicle создан, но id не сгенерировался (flush не дал id)"))
+                            .build()
+            );
+        }
         wsHub.broadcastText("refresh");
-        return v.getId();
+        return id;
     }
 
     @Transactional
@@ -66,8 +76,9 @@ public class VehicleService {
         wsHub.broadcastText("refresh");
     }
 
+    @Transactional
     public VehicleDto getVehicleById(Long id) {
-        Vehicle v = dao.findById(id)
+        Vehicle v = dao.findByIdWithCoordinates(id)
                 .orElseThrow(() -> new WebApplicationException(
                         "Vehicle not found: " + id, Response.Status.NOT_FOUND));
         return VehicleDto.toDto(v);

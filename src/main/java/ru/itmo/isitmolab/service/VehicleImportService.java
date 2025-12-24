@@ -4,7 +4,6 @@ import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
 import jakarta.transaction.Transactional;
 import jakarta.validation.ConstraintViolation;
-import jakarta.validation.Validator;
 import ru.itmo.isitmolab.dao.VehicleDao;
 import ru.itmo.isitmolab.dao.VehicleImportOperationDao;
 import ru.itmo.isitmolab.dto.VehicleDto;
@@ -15,6 +14,7 @@ import ru.itmo.isitmolab.exception.VehicleValidationException;
 import ru.itmo.isitmolab.model.Coordinates;
 import ru.itmo.isitmolab.model.Vehicle;
 import ru.itmo.isitmolab.model.VehicleImportOperation;
+import ru.itmo.isitmolab.util.BeanValidation;
 import ru.itmo.isitmolab.ws.VehicleWsService;
 
 import java.util.ArrayList;
@@ -25,8 +25,6 @@ import java.util.stream.Collectors;
 @ApplicationScoped
 public class VehicleImportService {
 
-    @Inject
-    private Validator validator;
     @Inject
     private VehicleImportOperationDao importOperationDao;
     @Inject
@@ -49,7 +47,7 @@ public class VehicleImportService {
             List<VehicleImportErrors.RowError> validationErrors = new ArrayList<>();
             for (int i = 0; i < items.size(); i++) {
                 VehicleImportItemDto item = items.get(i);
-                Set<ConstraintViolation<VehicleImportItemDto>> violations = validator.validate(item);
+                Set<ConstraintViolation<VehicleImportItemDto>> violations = BeanValidation.validate(item);
 
                 for (ConstraintViolation<VehicleImportItemDto> violation : violations) {
                     validationErrors.add(new VehicleImportErrors.RowError(

@@ -2,7 +2,6 @@ package ru.itmo.isitmolab.controller;
 
 import jakarta.enterprise.context.RequestScoped;
 import jakarta.inject.Inject;
-import jakarta.validation.Valid;
 import jakarta.ws.rs.*;
 import jakarta.ws.rs.core.MediaType;
 import jakarta.ws.rs.core.Response;
@@ -10,6 +9,7 @@ import ru.itmo.isitmolab.dto.CoordinatesDto;
 import ru.itmo.isitmolab.dto.GridTableRequest;
 import ru.itmo.isitmolab.dto.GridTableResponse;
 import ru.itmo.isitmolab.service.CoordinatesService;
+import ru.itmo.isitmolab.util.BeanValidation;
 
 import java.util.List;
 import java.util.Map;
@@ -25,7 +25,8 @@ public class CoordinatesController {
 
     @POST
     @Path("/query")
-    public Response query(@Valid GridTableRequest req) {
+    public Response query(GridTableRequest req) {
+        BeanValidation.validateOrThrow(req);
         GridTableResponse<CoordinatesDto> result = service.query(req);
         return Response.ok(result).build();
     }
@@ -37,14 +38,16 @@ public class CoordinatesController {
     }
 
     @POST
-    public Response create(@Valid CoordinatesDto dto) {
+    public Response create(CoordinatesDto dto) {
+        BeanValidation.validateOrThrow(dto);
         Long id = service.create(dto);
         return Response.status(Response.Status.CREATED).entity(Map.of("id", id)).build();
     }
 
     @PUT
     @Path("/{id}")
-    public void update(@PathParam("id") Long id, @Valid CoordinatesDto dto) {
+    public void update(@PathParam("id") Long id, CoordinatesDto dto) {
+        BeanValidation.validateOrThrow(dto);
         service.update(id, dto);
     }
 

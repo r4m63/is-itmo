@@ -6,14 +6,16 @@ import jakarta.persistence.criteria.*;
 import ru.itmo.isitmolab.dto.GridTableRequest;
 import ru.itmo.isitmolab.model.Coordinates;
 import ru.itmo.isitmolab.model.Vehicle;
+import ru.itmo.isitmolab.util.l2.L2CacheStats;
 import ru.itmo.isitmolab.util.GridTablePredicateBuilder;
 
 import java.util.*;
 
+@L2CacheStats
 @ApplicationScoped
 public class VehicleDao {
 
-    @PersistenceContext(unitName = "studsPU")
+    @PersistenceContext
     EntityManager em;
 
     public void save(Vehicle v) {
@@ -24,10 +26,24 @@ public class VehicleDao {
         }
     }
 
+    public void flush() {
+        em.flush();
+    }
+
     public Optional<Vehicle> findById(Long id) {
         if (id == null)
             return Optional.empty();
         return Optional.ofNullable(em.find(Vehicle.class, id));
+    }
+
+    public Optional<Vehicle> findByIdWithCoordinates(Long id) {
+        if (id == null) {
+            return Optional.empty();
+        }
+
+        EntityGraph<Vehicle> graph = getWithCoordsGraph();
+        Map<String, Object> hints = Map.of("jakarta.persistence.loadgraph", graph);
+        return Optional.ofNullable(em.find(Vehicle.class, id, hints));
     }
 
     public boolean existsById(Long id) {

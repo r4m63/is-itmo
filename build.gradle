@@ -31,8 +31,9 @@ tasks.withType(JavaCompile).configureEach {
 
 dependencies {
     compileOnly 'jakarta.platform:jakarta.jakartaee-web-api:11.0.0'
-//    implementation 'org.hibernate.orm:hibernate-core:6.6.1.Final'
-//    implementation 'org.postgresql:postgresql:42.7.4'
+    implementation 'org.hibernate.orm:hibernate-core:6.6.1.Final'
+    implementation "org.infinispan:infinispan-hibernate-cache-v62:15.1.4.Final"
+    implementation("io.minio:minio:8.5.12")
 
     compileOnly 'org.projectlombok:lombok:1.18.34'
     annotationProcessor 'org.projectlombok:lombok:1.18.34'

@@ -5,7 +5,6 @@ import jakarta.inject.Inject;
 import jakarta.json.bind.Jsonb;
 import jakarta.json.bind.JsonbBuilder;
 import jakarta.json.bind.JsonbException;
-import jakarta.validation.Valid;
 import jakarta.ws.rs.*;
 import jakarta.ws.rs.core.MediaType;
 import jakarta.ws.rs.core.Response;
@@ -14,6 +13,7 @@ import ru.itmo.isitmolab.dto.VehicleDto;
 import ru.itmo.isitmolab.dto.VehicleImportItemDto;
 import ru.itmo.isitmolab.service.VehicleImportService;
 import ru.itmo.isitmolab.service.VehicleService;
+import ru.itmo.isitmolab.util.BeanValidation;
 
 import java.io.IOException;
 import java.io.InputStream;
@@ -36,7 +36,8 @@ public class VehicleController {
     VehicleImportService vehicleImportService;
 
     @POST
-    public Response createVehicle(@Valid VehicleDto dto) {
+    public Response createVehicle(VehicleDto dto) {
+        BeanValidation.validateOrThrow(dto);
         Long id = vehicleService.createNewVehicle(dto);
         return Response.status(Response.Status.CREATED)
                 .entity(Map.of("id", id))
@@ -45,7 +46,8 @@ public class VehicleController {
 
     @PUT
     @Path("/{id:\\d+}")
-    public Response updateVehicle(@PathParam("id") Long id, @Valid VehicleDto dto) {
+    public Response updateVehicle(@PathParam("id") Long id, VehicleDto dto) {
+        BeanValidation.validateOrThrow(dto);
         vehicleService.updateVehicle(id, dto);
         return Response.noContent().build();
     }
@@ -66,7 +68,8 @@ public class VehicleController {
 
     @POST
     @Path("/query")
-    public Response queryVehicles(@Valid GridTableRequest req) {
+    public Response queryVehicles(GridTableRequest req) {
+        BeanValidation.validateOrThrow(req);
         var result = vehicleService.queryVehiclesTable(req);
         return Response.ok(result).build();
     }

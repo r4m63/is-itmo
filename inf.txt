@@ -1,0 +1,305 @@
+ssh -L 21201:127.0.0.1:21201 -L 21202:127.0.0.1:21202 -L 22821:127.0.0.1:22821 -L 5432:127.0.0.1:5432 se
+
+scp -P 2222 -r frontend/dist/* se:/home/studs/s409659/is/www
+scp -P 2222 -r build/libs/app.war se:/home/studs/s409659/is/wildfly-37.0.1.Final/standalone/deployments
+
+nginx
+sh ~/is/wildfly-37.0.1.Final/bin/standalone.sh
+
+nginx -t
+nginx -s reload
+sudo nginx -s quit
+sudo nginx -s stop
+
+
+
+ssh  se
+httpd -f ~/is/httpd.conf -k start
+export _JAVA_OPTIONS="-Xmx1g -XX:MaxMetaspaceSize=256m -Xss256k -XX:ActiveProcessorCount=1"
+sh ~/is/wildfly-37.0.1.Final/bin/standalone.sh
+
+
+---
+
+
+tar -xzf wildfly-37.0.1.Final.tar.gz
+
+sh $JBOSS_HOME/bin/add-user.sh
+
+поменять порты в standalone/configuration/standalone.xml
+
+sh $JBOSS_HOME/bin/standalone.sh
+
+Установка драйвера PostgreSQL как модуль WildFly:
+Создать модуль с драйвером:
+
+$JBOSS_HOME/modules/system/layers/base/org/postgresql/main/
+
+сюда надо положить postgresql-42.7.4.jar и файл module.xml
+module.xml (минимальный):
+
+<?xml version="1.0" encoding="UTF-8"?>
+<module xmlns="urn:jboss:module:1.9" name="org.postgresql">
+  <resources>
+    <resource-root path="postgresql-42.7.4.jar"/>
+  </resources>
+  <dependencies>
+    <module name="java.se"/>
+  </dependencies>
+</module>
+
+
+Зарегистрировать драйвер в подсистеме datasources (CLI):
+
+$JBOSS_HOME/bin/jboss-cli.sh --connect \
+--controller=127.0.0.1:21202 \
+"/subsystem=datasources/jdbc-driver=postgresql:add(driver-name=postgresql,driver-module-name=org.postgresql,driver-class-name=org.postgresql.Driver)"
+
+Создание DataSource (JNDI)
+
+$JBOSS_HOME/bin/jboss-cli.sh --connect \
+--controller=127.0.0.1:21202 \
+"data-source add --name=StudsDS --jndi-name=java:/jdbc/studs \
+ --driver-name=postgresql \
+ --connection-url=jdbc:postgresql://localhost:5432/studs \
+ --user-name=s409659 --password=boc6V3nPz0Ei8NvB \
+ --min-pool-size=2 --max-pool-size=20 --use-ccm=true --enabled=true"
+
+проверить соединение:
+
+$JBOSS_HOME/bin/jboss-cli.sh --connect \
+--controller=127.0.0.1:21202 \
+"/subsystem=datasources/data-source=StudsDS:test-connection-in-pool"
+
+
+
+------------------------------------------------------------------------------------------------------------------------
+
+
+
+1) persistence unit с именем studsPU надо создать мне самому в wildfly?
+2) persistence.xml описывает JTA-юнит, а какие еще есть? есть data-source, есть JTA-юнит -- что это все? это пулы соединений к бд через orm? -- разложи все на свои места, ато каша в голове
+3) JTA - это что такое в этом контексте?
+ChatGPT сказал:
+
+Очень хорошие вопросы 👍
+Давай аккуратно разложим всё по полочкам, потому что у большинства студентов тут тоже каша получается.
+
+1) Нужно ли самому создавать persistence unit studsPU в WildFly?
+
+Нет.
+persistence.xml входит в твой проект и именно там ты объявляешь persistence unit (PU).
+WildFly (или другой контейнер) при деплое приложения читает META-INF/persistence.xml, видит <persistence-unit name="studsPU"> и регистрирует его.
+
+То есть persistence unit создаётся автоматически на основе persistence.xml.
+Тебе нужно лишь дать DataSource через JNDI (например java:/jdbc/studs), а PU уже “свяжется” с ним.
+
+2) Какие бывают persistence unit?
+
+В persistence.xml есть ключ transaction-type.
+Есть два основных варианта:
+
+🔹 A) JTA persistence unit
+<persistence-unit name="studsPU" transaction-type="JTA">
+    <jta-data-source>java:/jdbc/studs</jta-data-source>
+</persistence-unit>
+
+
+Использует контейнер-управляемый DataSource (через JNDI).
+
+Транзакции управляет контейнер (JTA — Java Transaction API).
+
+Работает вместе с @PersistenceContext → EntityManager инжектится автоматически, транзакции управляются сервером (CMT).
+
+Это "правильный" вариант для серверов приложений (WildFly, Payara, GlassFish и т.д.).
+
+DataSource настраивается в самом сервере (через standalone.xml или админку).
+
+🔹 B) RESOURCE_LOCAL persistence unit
+<persistence-unit name="studsPU" transaction-type="RESOURCE_LOCAL">
+    <provider>org.hibernate.jpa.HibernatePersistenceProvider</provider>
+    <properties>
+        <property name="jakarta.persistence.jdbc.url" value="jdbc:postgresql://localhost:5432/studs"/>
+        <property name="jakarta.persistence.jdbc.user" value="user"/>
+        <property name="jakarta.persistence.jdbc.password" value="pass"/>
+    </properties>
+</persistence-unit>
+
+
+Настройки подключения пишутся прямо в persistence.xml.
+
+Контейнер не управляет транзакциями — всё делает приложение вручную (EntityManagerFactory, em.getTransaction().begin() и т.д.).
+
+Подходит для standalone-приложений (Java SE, десктоп, микросервис без Java EE контейнера).
+
+Можно использовать и в сервере приложений, но тогда теряешь фичи JTA (пул транзакций, распределённые транзакции и пр.).
+
+3) Что такое JTA в этом контексте?
+
+JTA (Java Transaction API) — стандарт для управления транзакциями в Java EE / Jakarta EE.
+
+В нашем случае:
+
+Когда PU объявлен как transaction-type="JTA", транзакциями управляет сервер приложений (WildFly).
+
+Это значит:
+
+тебе не нужно вручную делать em.getTransaction().begin() и commit() в сервисах с @Stateless;
+
+контейнер сам открывает транзакцию в начале вызова метода EJB и коммитит/откатывает в конце;
+
+можно объединять несколько ресурсов (например, PostgreSQL + JMS) в одну распределённую транзакцию (XA).
+
+То есть JTA = слой абстракции, который позволяет контейнеру управлять транзакциями за тебя.
+
+Чтобы не было каши — простая схема:
+
+DataSource (JNDI-пул) — это физическое подключение к базе, которым управляет сервер приложений.
+Ты его настраиваешь в WildFly (имя java:/jdbc/studs).
+
+Persistence Unit (PU) — это логическая конфигурация JPA (какие классы — сущности, какой DataSource использовать, какие опции Hibernate/EclipseLink).
+Описывается в persistence.xml.
+
+EntityManager — это объект API JPA, через который ты делаешь CRUD.
+Он создаётся контейнером на основе PU и инжектится через @PersistenceContext.
+
+JTA — это система управления транзакциями на уровне контейнера.
+Она "оборачивает" вызовы EntityManager и других ресурсов транзакцией, чтобы тебе не приходилось вручную управлять begin/commit/rollback.
+
+👉 Итог:
+
+Для WildFly/GlassFish/Payara → всегда бери JTA PU + JNDI DataSource.
+
+Для Java SE (без сервера) → тогда только RESOURCE_LOCAL PU.
+
+
+
+------------------------------------------------------------------------------------------------------------------------
+
+
+
+
+
+
+Что означает @PersistenceContext(unitName = "studsPU")?
+
+Это инъекция контейнер-управляемого EntityManager (JTA-EntityManager) для persistence unit’а с именем studsPU.
+
+Работает только если ваш persistence.xml описывает JTA-юнит (transaction-type="JTA") и ссылается на контейнерный DataSource (JNDI).
+
+С RESOURCE_LOCAL не работает: там контейнер не создает JTA-EntityManager. Для RESOURCE_LOCAL используют @PersistenceUnit + EntityManagerFactory и ручное открытие/закрытие EntityManager и транзакций — в сервере приложений это не рекомендуется.
+
+Вывод: если хотите продолжать писать @PersistenceContext, переводите PU на JTA + JNDI DataSource.
+
+Как правильно для WildFly (рекомендовано)
+1) Сделать JTA-пул в WildFly (JNDI DataSource)
+
+Через CLI (пример):
+
+# 1) Зарегистрировать модуль драйвера PostgreSQL (один раз)
+$JBOSS_HOME/bin/jboss-cli.sh --connect \
+"module add --name=org.postgresql --resources=/path/to/postgresql-42.7.4.jar --dependencies=jakarta.xml.bind.api,java.naming,javax.api"
+
+# 2) Объявить JDBC-драйвер в подсистеме datasources
+$JBOSS_HOME/bin/jboss-cli.sh --connect \
+"/subsystem=datasources/jdbc-driver=postgresql:add(driver-name=postgresql,driver-module-name=org.postgresql,driver-class-name=org.postgresql.Driver)"
+
+# 3) Создать DataSource
+$JBOSS_HOME/bin/jboss-cli.sh --connect \
+"data-source add --name=StudsDS --jndi-name=java:/jdbc/studs \
+ --driver-name=postgresql \
+ --connection-url=jdbc:postgresql://localhost:5432/studs \
+ --user-name=s409659 --password=boc6V3nPz0Ei8NvB \
+ --min-pool-size=2 --max-pool-size=20 --use-ccm=true --enabled=true"
+
+
+(Можно настроить через Admin Console: Configuration → Subsystems → Datasources & Drivers.)
+
+2) persistence.xml под JTA
+<?xml version="1.0" encoding="UTF-8"?>
+<persistence xmlns="https://jakarta.ee/xml/ns/persistence" version="3.1">
+  <persistence-unit name="studsPU" transaction-type="JTA">
+    <!-- провайдера можно не указывать: WildFly сам подставит Hibernate -->
+    <provider>org.hibernate.jpa.HibernatePersistenceProvider</provider>
+
+    <!-- ссылка на JNDI DataSource, созданный в шаге 1 -->
+    <jta-data-source>java:/jdbc/studs</jta-data-source>
+
+    <class>ru.itmo.isitmolab.model.Vehicle</class>
+
+    <properties>
+      <!-- стандартная генерация схемы -->
+      <property name="jakarta.persistence.schema-generation.database.action" value="create-or-extend-tables"/>
+      <!-- логирование по желанию -->
+      <property name="hibernate.show_sql" value="true"/>
+      <property name="hibernate.format_sql" value="true"/>
+    </properties>
+  </persistence-unit>
+</persistence>
+
+
+Обратите внимание: никаких jakarta.persistence.jdbc.* свойств и никаких -Ddb.* JVM-параметров не нужно — всё берется из контейнерного DataSource.
+
+3) Бины
+
+Теперь @PersistenceContext(unitName="studsPU") будет корректно инжектить JTA-EntityManager:
+
+@Stateless
+public class VehicleDao {
+    @PersistenceContext(unitName = "studsPU")
+    private EntityManager em;
+    // CRUD...
+}
+
+
+И транзакциями будет управлять контейнер (CMT) — вам не нужно вручную begin/commit.
+
+4) Зависимости Gradle
+
+Лучше опираться на то, что уже в WildFly:
+
+dependencies {
+    compileOnly 'jakarta.platform:jakarta.jakartaee-web-api:11.0.0'
+    // Hibernate ORM (провайдер JPA) уже встроен в WildFly → не тащим в WAR
+    // Драйвер Postgres даёт сервер через модуль → не тащим в WAR
+
+    compileOnly 'org.projectlombok:lombok:1.18.34'
+    annotationProcessor 'org.projectlombok:lombok:1.18.34'
+}
+
+
+Если положите hibernate-core в WAR, можно словить конфликт версий с серверным модулем. Лучше не нужно.
+
+Если вы хотите остаться на RESOURCE_LOCAL
+
+Это не рекомендовано в сервере приложений, но возможно:
+
+persistence.xml как у вас сейчас (jdbc.url/user/password + RESOURCE_LOCAL).
+
+В коде не @PersistenceContext, а:
+
+@PersistenceUnit(unitName = "studsPU")
+private EntityManagerFactory emf;
+
+// а дальше вручную:
+EntityManager em = emf.createEntityManager();
+EntityTransaction tx = em.getTransaction();
+tx.begin();
+// ...
+tx.commit();
+em.close();
+
+
+Транзакции — ручные, DataSource — из настроек persistence.xml/JVM-параметров, JNDI-пул не нужен.
+
+Минусы: вы обходитесь без контейнерных транзакций, пула EM, распределённых транзакций и т.п. На WildFly лучше JTA + JNDI.
+
+Ответы на ваши вопросы прямо:
+
+Что означает @PersistenceContext(unitName = "studsPU")?
+Инъекция контейнерного (JTA) EntityManager для PU studsPU. Требует transaction-type="JTA" и <jta-data-source>.
+
+Надо ли создавать JNDI pool соединений в WildFly?
+Да, если хотите работать как в Java EE принято: создайте JDBC DataSource в WildFly (JNDI, напр. java:/jdbc/studs), используйте его в <jta-data-source>. Тогда @PersistenceContext будет работать и транзакции возьмет на себя контейнер.
+
+Если хочешь — дам готовые команды CLI именно под твою установку WildFly (версию/путь), или помогу мигрировать текущий DAO/Service на JTA-EntityManager c минимальными правками.
