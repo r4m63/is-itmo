@@ -82,15 +82,43 @@ public class VehicleController {
 
     @POST
     @Path("/import")
-    @Consumes({MediaType.APPLICATION_JSON, MediaType.APPLICATION_OCTET_STREAM}) // двоичные данные без указания конкретного формата
+    @Consumes({MediaType.APPLICATION_JSON, MediaType.APPLICATION_OCTET_STREAM})
     public Response importVehicles(InputStream importStream,
                                    @HeaderParam("Content-Type") String contentType,
                                    @HeaderParam("X-Filename") String fileName) {
         try {
-            byte[] bytes = readAll(importStream);
-            List<VehicleImportItemDto> items = parseImportFile(bytes);
+            // input file
+            if (importStream == null) throw new BadRequestException("Не передан файл для импорта");
+            byte[] bytes;
+            try {
+                bytes = importStream.readAllBytes();
+            } catch (IOException e) {
+                throw new BadRequestException("Не удалось прочитать файл", e);
+            }
+            if (bytes == null || bytes.length == 0) throw new BadRequestException("Файл пустой");
+
+            // parse file
+            List<VehicleImportItemDto> items;
+            try (Jsonb jsonb = JsonbBuilder.create()) {
+                String payload = new String(bytes, UTF_8);
+                if (payload.isBlank()) throw new BadRequestException("Файл пустой");
+                VehicleImportItemDto[] parsed = jsonb.fromJson(payload, VehicleImportItemDto[].class);
+                if (parsed == null || parsed.length == 0)
+                    throw new BadRequestException("Файл не содержит данных для импорта");
+                if (Arrays.stream(parsed).anyMatch(Objects::isNull))
+                    throw new BadRequestException("Файл содержит пустые записи");
+                items = Arrays.asList(parsed);
+            } catch (JsonbException e) {
+                throw new BadRequestException("Файл не является корректным JSON-массивом", e);
+            } catch (BadRequestException e) {
+                throw e;
+            } catch (Exception e) {
+                throw new BadRequestException("Не удалось прочитать файл", e);
+            }
+
             vehicleImportService.importVehicles(items, bytes, fileName, contentType);
             return Response.ok().build();
+
         } catch (BadRequestException e) {
             return Response.status(Response.Status.BAD_REQUEST)
                     .entity(Map.of("message", e.getMessage()))
@@ -110,15 +138,13 @@ public class VehicleController {
     @Path("/import/history/{id}/file")
     public Response downloadImportFile(@PathParam("id") Long id) {
         VehicleImportOperation op = vehicleImportService.getOperationOrThrow(id);
-        if (op.getFileObjectKey() == null || op.getFileObjectKey().isBlank()) {
+        if (op.getFileObjectKey() == null || op.getFileObjectKey().isBlank())
             throw new NotFoundException("Файл для операции не найден: " + id);
-        }
 
         String ct = (op.getFileContentType() == null || op.getFileContentType().isBlank())
                 ? MediaType.APPLICATION_OCTET_STREAM
                 : op.getFileContentType();
 
-        // fail-fast: чтобы в браузере не было "пустого" ответа при ошибке во время стриминга
         try {
             minioStorage.statObject(op.getFileObjectKey());
         } catch (RuntimeException e) {
@@ -138,42 +164,6 @@ public class VehicleController {
         return Response.ok(stream, ct)
                 .header("Content-Disposition", "attachment; filename=\"" + name.replace("\"", "") + "\"")
                 .build();
-    }
-
-    private byte[] readAll(InputStream importStream) {
-        if (importStream == null) {
-            throw new BadRequestException("Не передан файл для импорта");
-        }
-        try {
-            return importStream.readAllBytes();
-        } catch (IOException e) {
-            throw new BadRequestException("Не удалось прочитать файл", e);
-        }
-    }
-
-    private List<VehicleImportItemDto> parseImportFile(byte[] bytes) {
-        try (Jsonb jsonb = JsonbBuilder.create()) {
-            String payload = new String(bytes, UTF_8);
-            if (payload.isBlank()) {
-                throw new BadRequestException("Файл пустой");
-            }
-
-            VehicleImportItemDto[] parsed = jsonb.fromJson(payload, VehicleImportItemDto[].class);
-            if (parsed == null || parsed.length == 0) {
-                throw new BadRequestException("Файл не содержит данных для импорта");
-            }
-
-            boolean hasNullItems = Arrays.stream(parsed).anyMatch(Objects::isNull);
-            if (hasNullItems) {
-                throw new BadRequestException("Файл содержит пустые записи");
-            }
-
-            return Arrays.asList(parsed);
-        } catch (JsonbException e) {
-            throw new BadRequestException("Файл не является корректным JSON-массивом", e);
-        } catch (Exception e) {
-            throw new BadRequestException("Не удалось прочитать файл", e);
-        }
     }
 
 }

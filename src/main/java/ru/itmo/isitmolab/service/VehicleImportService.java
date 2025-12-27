@@ -11,7 +11,10 @@ import ru.itmo.isitmolab.exception.VehicleValidationException;
 import ru.itmo.isitmolab.model.VehicleImportOperation;
 import ru.itmo.isitmolab.util.BeanValidation;
 
-import java.util.*;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Set;
+import java.util.UUID;
 import java.util.stream.Collectors;
 
 @ApplicationScoped
@@ -33,35 +36,28 @@ public class VehicleImportService {
                                String originalFileName,
                                String contentType) {
 
-        final String opUuid = UUID.randomUUID().toString();
-        final String ext = guessExt(originalFileName, contentType, ".json");
+        final String opUuid = UUID.randomUUID().toString(); // ключ файла в MinIO + имя
+        final String ext = guessExt(originalFileName, contentType, ".json"); // расширение файла
         final String safeName = sanitizeFileName(originalFileName, "import-" + opUuid + ext);
-
         final String ct = (contentType == null || contentType.isBlank())
                 ? "application/octet-stream"
                 : contentType;
-
         final byte[] fileBytes = (rawFile == null) ? new byte[0] : rawFile;
         final long size = fileBytes.length;
+        final String finalKey = MINIO_IMPORT_PREFIX + "/" + opUuid + ext; // ключ
 
-        // ЕДИНСТВЕННЫЙ ключ. Никаких tmp/failed.
-        final String finalKey = MINIO_IMPORT_PREFIX + "/" + opUuid + ext;
-
-        // 1) лог START всегда
+        // log started
         final Long opId = opLogger.createStarted(safeName, ct, size);
 
-        // 2) валидация ДО БД и ДО MinIO
+        // validation before transaction minio + db
         List<VehicleImportErrors.RowError> errors = validateItems(items);
         if (!errors.isEmpty()) {
-            // по требованию: при ошибке файл НЕ сохраняем => key=null
+            // при ошибке файл не сохраняется
             opLogger.markFailure(opId, 0, null, safeName, ct, size);
             throw new VehicleValidationException("Validation failed", errors);
         }
 
-        // 3) транзакционная часть:
-        //    - вставка Vehicle
-        //    - сохранение файла в MinIO в beforeCompletion() (фаза 2)
-        //    - при rollback -> remove(finalKey), logFailure(key=null)
+        // транзакция
         txService.importVehiclesTx(opId, items, fileBytes, finalKey, safeName, ct, size);
     }
 

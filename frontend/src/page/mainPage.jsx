@@ -372,17 +372,39 @@ export default function MainPage() {
     };
 
     const fileInputRef = useRef(null);
+
     const handleImportClick = () => {
-        if (fileInputRef.current) {
-            fileInputRef.current.click();
+        fileInputRef.current?.click();
+    };
+
+    const extractMessageFromBody = (raw) => {
+        if (!raw) return null;
+
+        // попробуем JSON
+        try {
+            const obj = JSON.parse(raw);
+
+            // твой формат: {message: "..."} или {errors:[...]}
+            if (obj?.message) return String(obj.message);
+
+            // иногда Jakarta/сервер может вернуть {error:"...", ...}
+            if (obj?.error) return String(obj.error);
+
+            return null;
+        } catch {
+            // если это не JSON — вернём как есть (обрежем)
+            const s = String(raw).trim();
+            if (!s) return null;
+            return s.length > 400 ? s.slice(0, 400) + "…" : s;
         }
     };
+
     const handleFileChange = async (e) => {
-        const file = e.target.files && e.target.files[0];
+        const file = e.target.files?.[0];
         if (!file) return;
 
         try {
-            // Быстрая проверка формата перед отправкой файла на сервер
+            // Быстрая проверка формата перед отправкой
             try {
                 const text = await file.text();
                 const parsed = JSON.parse(text);
@@ -390,57 +412,93 @@ export default function MainPage() {
                     toast.warning("Ожидается JSON-массив объектов для импорта");
                     return;
                 }
-            } catch (err) {
+            } catch {
                 toast.warning("Файл не является корректным JSON");
                 return;
             }
 
+            // запрос
             const response = await fetch(`${API_BASE}/api/vehicle/import`, {
                 method: "POST",
                 headers: {
                     "Content-Type": file.type || "application/json",
                     "X-Filename": file.name || "import.json",
                 },
-                credentials: 'include',
+                credentials: "include",
                 body: file,
             });
 
             if (response.ok) {
                 refreshGrid();
-                toast.success("Сохранено");
-            } else {
-                const errorData = await response.json().catch(() => ({}));
-                switch (response.status) {
-                    case 400:
-                        if (Array.isArray(errorData.errors) && errorData.errors.length > 0) {
-                            const lines = errorData.errors.map(err => {
-                                const rowPart = err.rowNumber != null
-                                    ? `Элемент ${err.rowNumber}: `
-                                    : "";
-                                return rowPart + err.message;
-                            });
-
-                            toast.error(
-                                <div>
-                                    {lines.map((line, idx) => (
-                                        <div key={idx}>{line}</div>
-                                    ))}
-                                </div>
-                            );
-                        } else if (errorData.message) {
-                            toast.error(errorData.message);
-                        } else {
-                            toast.error("Ошибка валидации (400)");
-                        }
-                        break;
-                    default:
-                        toast.error(errorData.message || `Error: ${response.status} - ${response.statusText}`);
-                        break;
-                }
+                toast.success("Импорт выполнен");
+                return;
             }
+
+            // читаем тело как текст, потом пытаемся достать message
+            const rawBody = await response.text().catch(() => "");
+            const msgFromBody = extractMessageFromBody(rawBody);
+
+            // 400: валидация (у тебя отдельная логика)
+            if (response.status === 400) {
+                // попробуем распарсить JSON, чтобы достать errors[]
+                let errorData = {};
+                try {
+                    errorData = JSON.parse(rawBody || "{}");
+                } catch {
+                }
+
+                if (Array.isArray(errorData.errors) && errorData.errors.length > 0) {
+                    const lines = errorData.errors.map((err) => {
+                        const rowPart = err.rowNumber != null ? `Элемент ${err.rowNumber}: ` : "";
+                        return rowPart + (err.message ?? "Ошибка");
+                    });
+
+                    toast.error(
+                        <div>
+                            {lines.map((line, idx) => (
+                                <div key={idx}>{line}</div>
+                            ))}
+                        </div>
+                    );
+                } else {
+                    toast.error(errorData.message || msgFromBody || "Ошибка валидации (400)");
+                }
+                return;
+            }
+
+            // 500/503 — как раз “MinIO упал / серверная ошибка”
+            if (response.status === 503) {
+                toast.error(msgFromBody || "Сервис временно недоступен. Импорт откатился.");
+                return;
+            }
+
+            if (response.status >= 500) {
+                // На защите можешь специально показать эту фразу:
+                toast.error(
+                    msgFromBody ||
+                    "Ошибка сервера: не удалось сохранить файл в хранилище (MinIO). Импорт откатился."
+                );
+                return;
+            }
+
+            toast.error(msgFromBody || `Ошибка: ${response.status} ${response.statusText}`);
         } catch (err) {
             console.error(err);
-            toast.error("catch error");
+
+            const message = String(err?.message || "");
+
+            // сетевые/соединение
+            if (message.includes("Failed to fetch") || message.includes("NetworkError")) {
+                toast.error("Нет соединения с сервером.");
+                return;
+            }
+
+            if (message.toLowerCase().includes("timeout") || message.toLowerCase().includes("aborted")) {
+                toast.error("Запрос слишком долго выполнялся и был прерван.");
+                return;
+            }
+
+            toast.error("Не удалось выполнить импорт: сервер недоступен или произошла ошибка.");
         } finally {
             e.target.value = "";
         }

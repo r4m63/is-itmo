@@ -15,8 +15,8 @@ public class VehicleImportOperationLogger {
     private VehicleImportOperationDao importOperationDao;
 
     /**
-     * Создать запись об импорте "в любом случае" (отдельная транзакция).
-     * ВАЖНО: fileObjectKey на этом этапе может быть null (если MinIO упадёт на put).
+     * Создать запись об импорте
+     * fileObjectKey на этом этапе может быть null (если MinIO упадёт на put)
      */
     @Transactional(Transactional.TxType.REQUIRES_NEW)
     public Long createStarted(String fileName, String contentType, long size) {
@@ -32,18 +32,7 @@ public class VehicleImportOperationLogger {
         return op.getId();
     }
 
-    /** Обновить ключ файла (tmp/failed/final) отдельной транзакцией. */
-    @Transactional(Transactional.TxType.REQUIRES_NEW)
-    public void updateFileKey(Long opId, String objectKey, String fileName, String contentType, long size) {
-        VehicleImportOperation op = mustGet(opId);
-        op.setFileObjectKey(objectKey);
-        op.setFileName(fileName);
-        op.setFileContentType(contentType);
-        op.setFileSize(size);
-        importOperationDao.save(op);
-    }
-
-    /** Финализировать успех: status=true, count, finalKey. */
+    /** Финализировать успех: status=true, count, finalKey */
     @Transactional(Transactional.TxType.REQUIRES_NEW)
     public void markSuccess(Long opId, int importedCount, String finalKey, String fileName, String contentType, long size) {
         VehicleImportOperation op = mustGet(opId);
@@ -56,7 +45,7 @@ public class VehicleImportOperationLogger {
         importOperationDao.save(op);
     }
 
-    /** Финализировать провал: status=false, count, key (failedKey или tempKey). */
+    /** Финализировать провал: status=false, count, key */
     @Transactional(Transactional.TxType.REQUIRES_NEW)
     public void markFailure(Long opId, int importedCount, String keyToStore, String fileName, String contentType, long size) {
         VehicleImportOperation op = mustGet(opId);

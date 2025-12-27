@@ -40,12 +40,6 @@ public class VehicleImportTxService {
     @Inject
     private VehicleWsService wsHub;
 
-    /**
-     * Фаза 1: вставка vehicles в БД (внутри JTA)
-     * Фаза 2: сохранение файла в MinIO в beforeCompletion()
-     *
-     * Условие: при ОШИБКЕ файл НЕ должен остаться в MinIO.
-     */
     @Transactional
     public void importVehiclesTx(Long opId,
                                  List<VehicleImportItemDto> items,
@@ -60,8 +54,7 @@ public class VehicleImportTxService {
         txRegistry.registerInterposedSynchronization(new Synchronization() {
             @Override
             public void beforeCompletion() {
-                // === ФАЗА 2 (MinIO) ===
-                // Если MinIO упадёт -> бросаем исключение -> JTA rollback -> vehicles не коммитятся
+                // 2 minio
                 minioStorage.putObject(
                         finalKey,
                         fileBytes,
@@ -72,28 +65,24 @@ public class VehicleImportTxService {
 
             @Override
             public void afterCompletion(int status) {
-                // afterCompletion не должен бросать
                 try {
                     if (status == Status.STATUS_COMMITTED) {
-                        // успех: и БД, и MinIO
-                        safeLogSuccess(opId, importedCount.get(), finalKey, safeName, contentType, size);
-                        safeBroadcastRefresh();
+                        // success
+                        opLogger.markSuccess(opId, importedCount.get(), finalKey, safeName, contentType, size);
+                        wsHub.broadcastText("refresh");
                         return;
                     }
 
-                    // rollback: файл НЕ должен оставаться в MinIO
+                    // rollback
                     minioStorage.removeObjectQuietly(finalKey);
-
-                    // и в логе не должно быть ссылки на файл
-                    safeLogFailure(opId, importedCount.get(), null, safeName, contentType, size);
+                    opLogger.markFailure(opId, importedCount.get(), null, safeName, contentType, size);
 
                 } catch (Throwable ignored) {
-                    // no-op
                 }
             }
         });
 
-        // === ФАЗА 1 (DB) ===
+        // 1 database
         for (VehicleImportItemDto item : items) {
             VehicleDto dto = VehicleImportItemDto.toEntity(item);
 
@@ -108,21 +97,4 @@ public class VehicleImportTxService {
         }
     }
 
-    private void safeLogSuccess(Long opId, int importedCount, String finalKey, String fileName, String ct, long size) {
-        try {
-            opLogger.markSuccess(opId, importedCount, finalKey, fileName, ct, size);
-        } catch (RuntimeException ignored) {}
-    }
-
-    private void safeLogFailure(Long opId, int importedCount, String keyToStore, String fileName, String ct, long size) {
-        try {
-            opLogger.markFailure(opId, importedCount, keyToStore, fileName, ct, size);
-        } catch (RuntimeException ignored) {}
-    }
-
-    private void safeBroadcastRefresh() {
-        try {
-            wsHub.broadcastText("refresh");
-        } catch (RuntimeException ignored) {}
-    }
 }
