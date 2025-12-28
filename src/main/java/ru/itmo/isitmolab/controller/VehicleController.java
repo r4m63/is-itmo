@@ -15,7 +15,7 @@ import ru.itmo.isitmolab.dto.VehicleImportItemDto;
 import ru.itmo.isitmolab.model.VehicleImportOperation;
 import ru.itmo.isitmolab.service.VehicleImportService;
 import ru.itmo.isitmolab.service.VehicleService;
-import ru.itmo.isitmolab.storage.MinioStorageService;
+import ru.itmo.isitmolab.service.MinioStorageService;
 import ru.itmo.isitmolab.util.BeanValidation;
 
 import java.io.IOException;

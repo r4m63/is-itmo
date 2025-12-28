@@ -12,7 +12,6 @@ import ru.itmo.isitmolab.dto.VehicleDto;
 import ru.itmo.isitmolab.dto.VehicleImportItemDto;
 import ru.itmo.isitmolab.model.Coordinates;
 import ru.itmo.isitmolab.model.Vehicle;
-import ru.itmo.isitmolab.storage.MinioStorageService;
 import ru.itmo.isitmolab.ws.VehicleWsService;
 
 import java.util.List;

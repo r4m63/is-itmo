@@ -1,26 +1,54 @@
-1.	Остаться на WildFly, но сделать нестандартную интеграцию: не через /subsystem=datasources, а через DBCP2
-BasicManagedDataSource, который подключается к TransactionManager WildFly и бросается в JNDI. Это будет работать,
-но это хак (не “поддерживаемый” путь WildFly).
+POOL
 
-2.	Перейти на Apache TomEE, где DBCP исторически поддержан как пул (и настраивается как ресурс), и JTA/EJB/JPA —
-нативная часть стека TomEE/OpenEJB. В их доках прямо говорится про pool “dbcp for OpenEJB by default…” и про
-JTA-managed datasource.  ￼
+WildFly datasource по дефолту — IronJacamar
+заменить реализацию пула на DBCP2 штатно нельзя (это другой механизм)
+в Apache TomEE - DBCP поддерживается
 
-Почему обычным способом на WildFly “поменять пул” нельзя
+```
+<?xml version="1.0" encoding="UTF-8"?>
+<tomee>
+    <Resource id="jdbc/MyDS" type="DataSource">         jdbc -
+      JdbcDriver org.postgresql.Driver
+      JdbcUrl jdbc:postgresql://localhost:5432/studs
+      UserName s409659
+      Password boc6V3nPz0Ei8NvB
+      JtaManaged true
+      DataSourceCreator dbcp
+      DefaultTransactionIsolation SERIALIZABLE
+      MaxTotal 30                                       максимум соединений в пуле одновременно
+      MinIdle 3                                         минимум готовых (idle) соединений, которые пул старается держать
+      MaxIdle 10                                        максимум idle соединений (лишние будет закрывать)
+      MaxWaitMillis 5000                                сколько ждать свободное соединение, если пул занят (5 секунд), потом ошибка
+      TestOnBorrow true                                 перед выдачей соединения проверять, что оно живое
+      ValidationQuery SELECT 1                          SQL-запрос для проверки “живости” соединения
+    </Resource>
 
-WildFly datasource из подсистемы datasources — это JCA/IronJacamar managed datasource. Ты можешь тюнить параметры,
-но “заменить реализацию пула на DBCP2” штатно нельзя (это другой механизм). Поэтому мы обходим datasources и
-публикуем в JNDI наш DataSource. (Да, звучит странно — но требования у тебя тоже специфические.)
+    	•	MyDS — основной JTA datasource: все операции в @Transactional работают через него → commit/rollback управляет контейнер.
+    	•	MyDSUnmanaged — не JTA: для случаев, где не нужна контейнерная транзакция, либо для ручного контроля.
+
+    <Resource id="jdbc/MyDSUnmanaged" type="DataSource">
+      JdbcDriver org.postgresql.Driver
+      JdbcUrl jdbc:postgresql://localhost:5432/studs
+      UserName s409659
+      Password boc6V3nPz0Ei8NvB
+      JtaManaged false
+      DataSourceCreator dbcp
+      DefaultTransactionIsolation SERIALIZABLE
+      MaxTotal 10
+      TestOnBorrow true
+      ValidationQuery SELECT 1
+    </Resource>
+</tomee>
+```
 
 
-cd apache-tomee-*/bin
-./startup.sh
 
-Положи JDBC-драйвер (например postgresql-*.jar) в:
-apache-tomee-*/lib/
+========================================================================================================================
+СОЗДАТЬ DATASOURCE
 
-Создай/отредактируй файл:
-apache-tomee-*/conf/tomee.xml
+sh apache-tomee-*/bin/startup.sh
+положить JDBC-драйвер (например postgresql-*.jar) в: apache-tomee-*/lib/
+создать файл: apache-tomee-*/conf/tomee.xml
 
 Пример (PostgreSQL), JTA включено и пул = DBCP:
 
@@ -30,13 +58,8 @@ apache-tomee-*/conf/tomee.xml
     JdbcUrl jdbc:postgresql://localhost:5432/mydb
     UserName myuser
     Password mypass
-
     JtaManaged true
-
-    # ВАЖНО: заставляем TomEE использовать Apache Commons DBCP
     DataSourceCreator dbcp
-
-    # типичные DBCP2 параметры пула
     maxTotal 30
     minIdle 3
     maxIdle 10
@@ -51,10 +74,8 @@ apache-tomee-*/conf/tomee.xml
     JdbcUrl jdbc:postgresql://localhost:5432/mydb
     UserName myuser
     Password mypass
-
     JtaManaged false
     DataSourceCreator dbcp
-
     maxTotal 10
     testOnBorrow true
     validationQuery SELECT 1
@@ -67,19 +88,17 @@ persistence.xml под TomEE
 <persistence-unit name="MyPU" transaction-type="JTA">
   <jta-data-source>java:openejb/Resource/jdbc/MyDS</jta-data-source>
   <non-jta-data-source>java:openejb/Resource/jdbc/MyDSUnmanaged</non-jta-data-source>
-
-  <!-- Если ты хочешь оставить Hibernate -->
   <provider>org.hibernate.jpa.HibernatePersistenceProvider</provider>
-
   <properties>
     <!-- твои hibernate props -->
   </properties>
 </persistence-unit>
 
 
-
-добавить юзера:
+========================================================================================================================
+ДОБАВИТЬ ЮЗЕРА
 apache-tomee-*/conf/tomcat-users.xml
+
 <tomcat-users>
   <role rolename="manager-gui"/>
   <role rolename="manager-script"/>

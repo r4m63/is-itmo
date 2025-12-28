@@ -22,6 +22,8 @@ public class VehicleImportService {
 
     private static final String MINIO_IMPORT_PREFIX = "imports";
 
+    private static final int SERIALIZABLE_RETRY_ATTEMPTS = 3;
+
     @Inject
     private VehicleImportOperationDao importOperationDao;
 

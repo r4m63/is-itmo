@@ -1,4 +1,4 @@
-package ru.itmo.isitmolab.storage;
+package ru.itmo.isitmolab.service;
 
 import io.minio.*;
 import jakarta.annotation.PostConstruct;
@@ -23,18 +23,44 @@ public class MinioStorageService {
 
     @PostConstruct
     public void init() {
-        // Подхватывай как у тебя принято: env / system props / mp-config.
-        // Главное: не localhost в docker!
-        this.endpoint = get("MINIO_ENDPOINT", "http://localhost:9000");
-        String accessKey = get("MINIO_ACCESS_KEY", "minioadmin");
-        String secretKey = get("MINIO_SECRET_KEY", "minioadmin");
-        this.bucket = get("MINIO_BUCKET", "isitmo-imports");
+        // system props из скрипта: -Dminio.url, -Dminio.accessKey, -Dminio.secretKey, -Dstorage.importsBucket
+        // env fallback: MINIO_ENDPOINT, MINIO_ACCESS_KEY, MINIO_SECRET_KEY, MINIO_BUCKET
+        this.endpoint = firstNonBlank(
+                System.getProperty("minio.url"),
+                System.getenv("MINIO_ENDPOINT"),
+                "http://localhost:9000"
+        );
 
-        // ВАЖНО: тут ничего не трогаем по сети, чтобы CDI-бин не падал при старте.
+        String accessKey = firstNonBlank(
+                System.getProperty("minio.accessKey"),
+                System.getenv("MINIO_ACCESS_KEY"),
+                "minioadmin"
+        );
+
+        String secretKey = firstNonBlank(
+                System.getProperty("minio.secretKey"),
+                System.getenv("MINIO_SECRET_KEY"),
+                "minioadmin"
+        );
+
+        this.bucket = firstNonBlank(
+                System.getProperty("storage.importsBucket"),
+                System.getenv("MINIO_BUCKET"),
+                "imports"
+        );
+
         this.client = MinioClient.builder()
                 .endpoint(endpoint)
                 .credentials(accessKey, secretKey)
                 .build();
+
+        System.out.println("MinIO endpoint=" + endpoint + " bucket=" + bucket);
+    }
+
+    private static String firstNonBlank(String a, String b, String def) {
+        if (a != null && !a.isBlank()) return a;
+        if (b != null && !b.isBlank()) return b;
+        return def;
     }
 
     private String get(String key, String def) {
