@@ -26,6 +26,18 @@ public class VehicleImportOperation {
     @Column(name = "imported_count")
     private Integer importedCount;
 
+    @Column(name = "file_object_key")
+    private String fileObjectKey;
+
+    @Column(name = "file_name")
+    private String fileName;
+
+    @Column(name = "file_content_type")
+    private String fileContentType;
+
+    @Column(name = "file_size")
+    private Long fileSize;
+
     @Column(name = "creation_time", nullable = false, updatable = false)
     private LocalDateTime creationTime;
 

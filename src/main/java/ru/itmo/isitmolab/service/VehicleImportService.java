@@ -2,98 +2,112 @@ package ru.itmo.isitmolab.service;
 
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
-import jakarta.transaction.Transactional;
 import jakarta.validation.ConstraintViolation;
-import ru.itmo.isitmolab.dao.VehicleDao;
 import ru.itmo.isitmolab.dao.VehicleImportOperationDao;
-import ru.itmo.isitmolab.dto.VehicleDto;
 import ru.itmo.isitmolab.dto.VehicleImportErrors;
 import ru.itmo.isitmolab.dto.VehicleImportHistoryItemDto;
 import ru.itmo.isitmolab.dto.VehicleImportItemDto;
 import ru.itmo.isitmolab.exception.VehicleValidationException;
-import ru.itmo.isitmolab.model.Coordinates;
-import ru.itmo.isitmolab.model.Vehicle;
 import ru.itmo.isitmolab.model.VehicleImportOperation;
 import ru.itmo.isitmolab.util.BeanValidation;
-import ru.itmo.isitmolab.ws.VehicleWsService;
 
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Set;
+import java.util.UUID;
 import java.util.stream.Collectors;
 
 @ApplicationScoped
 public class VehicleImportService {
 
+    private static final String MINIO_IMPORT_PREFIX = "imports";
+
     @Inject
     private VehicleImportOperationDao importOperationDao;
+
     @Inject
-    private VehicleImportService self;
+    private VehicleImportOperationLogger opLogger;
+
     @Inject
-    private VehicleService vehicleService;
-    @Inject
-    private VehicleDao dao;
-    @Inject
-    private VehicleWsService wsHub;
+    private VehicleImportTxService txService;
 
+    public void importVehicles(List<VehicleImportItemDto> items,
+                               byte[] rawFile,
+                               String originalFileName,
+                               String contentType) {
 
-    @Transactional
-    public void importVehicles(List<VehicleImportItemDto> items) {
+        final String opUuid = UUID.randomUUID().toString(); // ключ файла в MinIO + имя
+        final String ext = guessExt(originalFileName, contentType, ".json"); // расширение файла
+        final String safeName = sanitizeFileName(originalFileName, "import-" + opUuid + ext);
+        final String ct = (contentType == null || contentType.isBlank())
+                ? "application/octet-stream"
+                : contentType;
+        final byte[] fileBytes = (rawFile == null) ? new byte[0] : rawFile;
+        final long size = fileBytes.length;
+        final String finalKey = MINIO_IMPORT_PREFIX + "/" + opUuid + ext; // ключ
 
-        int importedCount = 0;
+        // log started
+        final Long opId = opLogger.createStarted(safeName, ct, size);
 
-        try {
-            // VALIDATION
-            List<VehicleImportErrors.RowError> validationErrors = new ArrayList<>();
-            for (int i = 0; i < items.size(); i++) {
-                VehicleImportItemDto item = items.get(i);
-                Set<ConstraintViolation<VehicleImportItemDto>> violations = BeanValidation.validate(item);
-
-                for (ConstraintViolation<VehicleImportItemDto> violation : violations) {
-                    validationErrors.add(new VehicleImportErrors.RowError(
-                            i + 1,
-                            violation.getPropertyPath().toString(),
-                            violation.getMessage()
-                    ));
-                }
-            }
-
-            if (!validationErrors.isEmpty()) {
-                throw new VehicleValidationException("Validation failed", validationErrors);
-            }
-
-            // IMPORT
-            for (VehicleImportItemDto item : items) {
-                VehicleDto dto = VehicleImportItemDto.toEntity(item);
-
-                // БИЗНЕС-ОГРАНИЧЕНИЕ: уникальность имени
-                vehicleService.checkUniqueVehicleName(dto.getName(), null);
-
-                Coordinates coords = vehicleService.resolveCoordinatesForDto(dto);
-                Vehicle v = VehicleDto.toEntity(dto, null);
-                v.setCoordinates(coords);
-                dao.save(v);
-
-                importedCount++;
-            }
-
-            wsHub.broadcastText("refresh");
-
-            self.logImportOperation(true, importedCount);
-
-        } catch (Exception e) {
-            self.logImportOperation(false, importedCount);
-            throw e;
+        // validation before transaction minio + db
+        List<VehicleImportErrors.RowError> errors = validateItems(items);
+        if (!errors.isEmpty()) {
+            // при ошибке файл не сохраняется
+            opLogger.markFailure(opId, 0, null, safeName, ct, size);
+            throw new VehicleValidationException("Validation failed", errors);
         }
+
+        // транзакция
+        txService.importVehiclesTx(opId, items, fileBytes, finalKey, safeName, ct, size);
     }
 
+    private List<VehicleImportErrors.RowError> validateItems(List<VehicleImportItemDto> items) {
+        List<VehicleImportErrors.RowError> errors = new ArrayList<>();
+        if (items == null || items.isEmpty()) {
+            errors.add(new VehicleImportErrors.RowError(1, "items", "Файл не содержит данных для импорта"));
+            return errors;
+        }
 
-    @Transactional(Transactional.TxType.REQUIRES_NEW)
-    public void logImportOperation(boolean success, Integer importedCount) {
-        VehicleImportOperation op = new VehicleImportOperation();
-        op.setStatus(success);
-        op.setImportedCount(importedCount);
-        importOperationDao.save(op);
+        for (int i = 0; i < items.size(); i++) {
+            VehicleImportItemDto item = items.get(i);
+            if (item == null) {
+                errors.add(new VehicleImportErrors.RowError(i + 1, "item", "Пустая запись"));
+                continue;
+            }
+
+            Set<ConstraintViolation<VehicleImportItemDto>> violations = BeanValidation.validate(item);
+            for (ConstraintViolation<VehicleImportItemDto> v : violations) {
+                errors.add(new VehicleImportErrors.RowError(
+                        i + 1,
+                        v.getPropertyPath().toString(),
+                        v.getMessage()
+                ));
+            }
+        }
+        return errors;
+    }
+
+    private String sanitizeFileName(String original, String fallback) {
+        if (original == null || original.isBlank()) return fallback;
+        String s = original
+                .replace("\"", "")
+                .replace("\\", "_")
+                .replace("/", "_")
+                .replace("\n", "")
+                .replace("\r", "")
+                .trim();
+        return s.isBlank() ? fallback : s;
+    }
+
+    private String guessExt(String originalFileName, String contentType, String defaultExt) {
+        if (originalFileName != null) {
+            int dot = originalFileName.lastIndexOf('.');
+            if (dot >= 0 && dot < originalFileName.length() - 1) {
+                String ext = originalFileName.substring(dot);
+                if (ext.length() <= 10) return ext;
+            }
+        }
+        return defaultExt;
     }
 
     public List<VehicleImportHistoryItemDto> getHistoryForAdmin(int limit) {
@@ -103,4 +117,11 @@ public class VehicleImportService {
                 .collect(Collectors.toList());
     }
 
+    public VehicleImportOperation getOperationOrThrow(Long id) {
+        return importOperationDao.findById(id)
+                .orElseThrow(() -> new jakarta.ws.rs.WebApplicationException(
+                        "Import operation not found: " + id,
+                        jakarta.ws.rs.core.Response.Status.NOT_FOUND
+                ));
+    }
 }

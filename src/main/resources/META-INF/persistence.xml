@@ -4,15 +4,10 @@
         <jta-data-source>java:openejb/Resource/jdbc/MyDS</jta-data-source>
         <non-jta-data-source>java:openejb/Resource/jdbc/MyDSUnmanaged</non-jta-data-source>
         <properties>
-            <!-- включаем L2 -->
             <property name="hibernate.cache.use_second_level_cache" value="true"/>
-            <!-- (опционально) query cache -->
-            <property name="hibernate.cache.use_query_cache" value="true"/>
-            <!-- Infinispan как провайдер L2 -->
-            <property name="hibernate.cache.region.factory_class" value="org.infinispan.hibernate.cache.v62.InfinispanRegionFactory"/>
-            <!-- более быстрый локальный конфиг, если один узел -->
+            <property name="hibernate.cache.region.factory_class"
+                      value="org.infinispan.hibernate.cache.v62.InfinispanRegionFactory"/>
             <property name="hibernate.cache.infinispan.cfg" value="infinispan-config-local.xml"/>
-            <!-- понадобится для статистики -->
             <property name="hibernate.generate_statistics" value="true"/>
         </properties>
     </persistence-unit>

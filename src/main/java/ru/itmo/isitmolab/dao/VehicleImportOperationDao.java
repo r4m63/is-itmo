@@ -6,6 +6,7 @@ import jakarta.persistence.PersistenceContext;
 import ru.itmo.isitmolab.model.VehicleImportOperation;
 
 import java.util.List;
+import java.util.Optional;
 
 @ApplicationScoped
 public class VehicleImportOperationDao {
@@ -15,6 +16,11 @@ public class VehicleImportOperationDao {
 
     public void save(VehicleImportOperation op) {
         em.persist(op);
+    }
+
+    public Optional<VehicleImportOperation> findById(Long id) {
+        if (id == null) return Optional.empty();
+        return Optional.ofNullable(em.find(VehicleImportOperation.class, id));
     }
 
     // public List<VehicleImportOperation> findLastForAdmin(Long adminId, int limit) {

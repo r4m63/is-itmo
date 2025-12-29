@@ -30,10 +30,14 @@ CREATE TABLE IF NOT EXISTS vehicle
 );
 CREATE TABLE IF NOT EXISTS vehicle_import_operation
 (
-    id             BIGSERIAL PRIMARY KEY,
-    status         BOOLEAN,
-    imported_count INTEGER,
-    creation_time  TIMESTAMP NOT NULL DEFAULT now()
+    id                BIGSERIAL PRIMARY KEY,
+    status            BOOLEAN,
+    imported_count    INTEGER,
+    file_object_key   TEXT,
+    file_name         TEXT,
+    file_content_type TEXT,
+    file_size         BIGINT,
+    creation_time     TIMESTAMP NOT NULL DEFAULT now()
 );
 
 

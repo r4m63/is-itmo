@@ -8,15 +8,19 @@ import jakarta.json.bind.JsonbException;
 import jakarta.ws.rs.*;
 import jakarta.ws.rs.core.MediaType;
 import jakarta.ws.rs.core.Response;
+import jakarta.ws.rs.core.StreamingOutput;
 import ru.itmo.isitmolab.dto.GridTableRequest;
 import ru.itmo.isitmolab.dto.VehicleDto;
 import ru.itmo.isitmolab.dto.VehicleImportItemDto;
+import ru.itmo.isitmolab.model.VehicleImportOperation;
 import ru.itmo.isitmolab.service.VehicleImportService;
 import ru.itmo.isitmolab.service.VehicleService;
+import ru.itmo.isitmolab.service.MinioStorageService;
 import ru.itmo.isitmolab.util.BeanValidation;
 
 import java.io.IOException;
 import java.io.InputStream;
+import java.io.OutputStream;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
@@ -34,6 +38,8 @@ public class VehicleController {
     VehicleService vehicleService;
     @Inject
     VehicleImportService vehicleImportService;
+    @Inject
+    MinioStorageService minioStorage;
 
     @POST
     public Response createVehicle(VehicleDto dto) {
@@ -76,12 +82,43 @@ public class VehicleController {
 
     @POST
     @Path("/import")
-    @Consumes({MediaType.APPLICATION_JSON, MediaType.APPLICATION_OCTET_STREAM}) // двоичные данные без указания конкретного формата
-    public Response importVehicles(InputStream importStream) {
+    @Consumes({MediaType.APPLICATION_JSON, MediaType.APPLICATION_OCTET_STREAM})
+    public Response importVehicles(InputStream importStream,
+                                   @HeaderParam("Content-Type") String contentType,
+                                   @HeaderParam("X-Filename") String fileName) {
         try {
-            List<VehicleImportItemDto> items = parseImportFile(importStream);
-            vehicleImportService.importVehicles(items);
+            // input file
+            if (importStream == null) throw new BadRequestException("Не передан файл для импорта");
+            byte[] bytes;
+            try {
+                bytes = importStream.readAllBytes();
+            } catch (IOException e) {
+                throw new BadRequestException("Не удалось прочитать файл", e);
+            }
+            if (bytes == null || bytes.length == 0) throw new BadRequestException("Файл пустой");
+
+            // parse file
+            List<VehicleImportItemDto> items;
+            try (Jsonb jsonb = JsonbBuilder.create()) {
+                String payload = new String(bytes, UTF_8);
+                if (payload.isBlank()) throw new BadRequestException("Файл пустой");
+                VehicleImportItemDto[] parsed = jsonb.fromJson(payload, VehicleImportItemDto[].class);
+                if (parsed == null || parsed.length == 0)
+                    throw new BadRequestException("Файл не содержит данных для импорта");
+                if (Arrays.stream(parsed).anyMatch(Objects::isNull))
+                    throw new BadRequestException("Файл содержит пустые записи");
+                items = Arrays.asList(parsed);
+            } catch (JsonbException e) {
+                throw new BadRequestException("Файл не является корректным JSON-массивом", e);
+            } catch (BadRequestException e) {
+                throw e;
+            } catch (Exception e) {
+                throw new BadRequestException("Не удалось прочитать файл", e);
+            }
+
+            vehicleImportService.importVehicles(items, bytes, fileName, contentType);
             return Response.ok().build();
+
         } catch (BadRequestException e) {
             return Response.status(Response.Status.BAD_REQUEST)
                     .entity(Map.of("message", e.getMessage()))
@@ -97,33 +134,36 @@ public class VehicleController {
         return Response.ok(history).build();
     }
 
-    private List<VehicleImportItemDto> parseImportFile(InputStream importStream) {
-        if (importStream == null) {
-            throw new BadRequestException("Не передан файл для импорта");
+    @GET
+    @Path("/import/history/{id}/file")
+    public Response downloadImportFile(@PathParam("id") Long id) {
+        VehicleImportOperation op = vehicleImportService.getOperationOrThrow(id);
+        if (op.getFileObjectKey() == null || op.getFileObjectKey().isBlank())
+            throw new NotFoundException("Файл для операции не найден: " + id);
+
+        String ct = (op.getFileContentType() == null || op.getFileContentType().isBlank())
+                ? MediaType.APPLICATION_OCTET_STREAM
+                : op.getFileContentType();
+
+        try {
+            minioStorage.statObject(op.getFileObjectKey());
+        } catch (RuntimeException e) {
+            throw new NotFoundException("Файл не найден в MinIO для операции " + id + " (key=" + op.getFileObjectKey() + ")");
         }
 
-        try (Jsonb jsonb = JsonbBuilder.create()) {
-            String payload = new String(importStream.readAllBytes(), UTF_8);
-            if (payload.isBlank()) {
-                throw new BadRequestException("Файл пустой");
+        StreamingOutput stream = (OutputStream out) -> {
+            try (InputStream in = minioStorage.getObject(op.getFileObjectKey())) {
+                in.transferTo(out);
             }
+        };
 
-            VehicleImportItemDto[] parsed = jsonb.fromJson(payload, VehicleImportItemDto[].class);
-            if (parsed == null || parsed.length == 0) {
-                throw new BadRequestException("Файл не содержит данных для импорта");
-            }
+        String name = (op.getFileName() == null || op.getFileName().isBlank())
+                ? ("import-" + id + ".json")
+                : op.getFileName();
 
-            boolean hasNullItems = Arrays.stream(parsed).anyMatch(Objects::isNull);
-            if (hasNullItems) {
-                throw new BadRequestException("Файл содержит пустые записи");
-            }
-
-            return Arrays.asList(parsed);
-        } catch (JsonbException e) {
-            throw new BadRequestException("Файл не является корректным JSON-массивом", e);
-        } catch (Exception e) {
-            throw new BadRequestException("Не удалось прочитать файл", e);
-        }
+        return Response.ok(stream, ct)
+                .header("Content-Disposition", "attachment; filename=\"" + name.replace("\"", "") + "\"")
+                .build();
     }
 
 }

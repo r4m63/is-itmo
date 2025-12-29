@@ -1,2 +1,3 @@
+DROP TABLE IF EXISTS vehicle_import_operation CASCADE;
 DROP TABLE IF EXISTS vehicle CASCADE;
 DROP TABLE IF EXISTS coordinates CASCADE;

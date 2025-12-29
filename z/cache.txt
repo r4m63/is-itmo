@@ -1,0 +1,249 @@
+ИНТЕРСЕПТОР
+    перехватчик вызовов метода, который позволяет вставить свой код до и/или после выполнения метода, не меняя сам метод
+Уровни КЭША
+    L0 (опционально, у провайдера/драйвера)
+    	•	Внутренние кэши JDBC/драйвера/пула, иногда query-plan cache.
+    	•	Ты это обычно напрямую не контролируешь.
+    L1 cache (First-level cache)
+    	•	Кэш внутри EntityManager / Hibernate Session.
+    	•	Живёт только в рамках одного EM/Session (обычно один запрос/одна транзакция).
+    	•	Всегда включён, отключить нельзя.
+    	•	Гарантирует: если ты два раза загрузил одну сущность по id в рамках одного EM — второй раз SQL не будет.
+    L2 cache (Second-level cache)
+    	•	Кэш на уровне EntityManagerFactory / SessionFactory.
+    	•	Общий для всех EntityManager’ов в приложении.
+    	•	Его можно включать/выключать, выбирать провайдер (Infinispan/Ehcache/и т.д.).
+    	•	Обычно кэширует сущности/коллекции/натуральные ключи (а запросы — отдельно).
+    Query cache (часто называют “рядом с L2”)
+    	•	Кэш результатов запросов (обычно список id + timestamps).
+    	•	Работает только если включён L2 и настроены регионы/инвалидация.
+Если прям одной строкой: L1 = внутри одного EntityManager, L2 = общий между всеми EntityManager, query cache = кэш результатов запросов поверх L2.
+
+L2 полезен на повторных чтениях, а не на вставках
+
+
+
+
+
+•	hit — сущность взяли из кэша, в БД не ходили
+•	miss — запросили из кэша, но не нашли → пришлось идти в БД
+•	put — положили в кэш
+------------------------------------------------------------------------------------------------------------------------
+Да, нормально, что L2C puts/hits/misses = 0.
+Почему (кратко для защиты):
+в моём /query данные грузятся не через EntityManager.find(id), а через JPQL/Criteria запросы (select ... where id in :ids, фильтры/сортировка, EntityGraph). Это query-based загрузка, и Hibernate в таком сценарии не обязан обращаться к L2 как к “кэшу по id”, поэтому счётчики L2 могут оставаться нулевыми.
+L2 обычно видно, когда ты повторно читаешь сущность по PK: em.find(Vehicle.class, id) → первый раз miss+put, второй раз hit.
+------------------------------------------------------------------------------------------------------------------------
+Что такое L2 и когда он должен срабатывать
+L2 (Second Level Cache) — это кэш Hibernate, общий для всего приложения (между транзакциями и запросами). Он кэширует сущности по первичному ключу и иногда связанные структуры (timestamps/query cache).
+Классический случай, когда L2 срабатывает:
+	•	вызываем EntityManager.find(Vehicle.class, id)
+	•	первый раз: кэша нет → L2 miss, Hibernate читает из БД → кладёт в кэш (L2 put)
+	•	второй раз (в другом запросе/транзакции, когда L1 уже пустой): берёт из кэша → L2 hit, в БД не ходит (или ходит меньше)
+То есть L2 хорошо виден на повторном чтении одной и той же сущности по id.
+⸻
+Почему у меня в логах L2 = 0
+У меня в основном чтение происходит не через em.find(id), а через SQL/JPQL запросы типа:
+select v from Vehicle v where v.id in :ids
+Это query-based загрузка, Hibernate получает результат из БД сразу пачкой.
+В таком режиме Hibernate не обязан (и чаще всего реально не будет) проходить через L2 “как через lookup по id”, поэтому в счётчиках:
+	•	0 L2C hits
+	•	0 L2C misses
+	•	0 L2C puts
+Это не ошибка — это просто другой сценарий загрузки данных.
+Плюс я использую EntityGraph (loadgraph для coordinates), и это тоже обычно приводит к SQL-загрузке/догрузке, а не к “взять целиком из L2”.
+⸻
+Где в моём коде L2 должен появиться
+L2 должен быть виден на методах типа:
+em.find(Vehicle.class, id)
+Например, GET /vehicle/{id}:
+	•	первый запрос → miss + put
+	•	второй запрос → hit
+И именно так я могу продемонстрировать кэш на защите: два одинаковых запроса подряд в разных транзакциях.
+⸻
+Вывод
+	•	L2 у меня включен и настроен (Infinispan + @Cacheable + READ_WRITE)
+	•	Но в конкретной ручке /query он почти не срабатывает, потому что там не поиск по id через find(), а выборка через запрос IN, поэтому счётчики L2 остаются нулевыми.
+	•	Для демонстрации L2 я использую сценарий “двойное чтение по id”.
+
+
+
+
+
+
+
+
+
+
+========================================================================================================================
+infinispan-config-local.xml
+
+	•	<infinispan ...>
+Корневой элемент конфигурации Infinispan. Ты используешь схему 15.0.
+	•	<cache-container name="hibernate">
+Ты создаёшь контейнер кэшей с именем hibernate.
+Это важно потому, что Hibernate Infinispan интеграция (через InfinispanRegionFactory) ищет/создаёт регионы кэша именно в cache-container’е, предназначенном для Hibernate.
+	•	<local-cache name="default"/>
+Локальный кэш “по умолчанию” (in-memory, в рамках одной JVM).
+Используется как fallback, если Hibernate попросит регион, который ты явно не описал.
+Local-cache = без кластера, без репликации, просто Map в памяти + внутренние структуры.
+	•	<local-cache name="entity"/>
+Регион для кэширования сущностей (L2 entity cache).
+Сюда Hibernate кладёт данные сущностей, помеченных @Cacheable / @Cache(...).
+Типичный сценарий:
+	•	1-й запрос к сущности → DB → put в entity
+	•	2-й запрос → hit из entity → DB не нужен
+	•	<local-cache name="query"/>
+Регион для query cache (если включён hibernate.cache.use_query_cache=true).
+Важно: query cache не хранит сущности целиком, он хранит результаты запроса (обычно список id + параметры).
+Потом Hibernate по этим id достаёт сущности (из L2 entity cache или из DB).
+	•	<local-cache name="timestamps"/>
+Это ключевой регион для корректности query cache.
+Hibernate кладёт сюда “метки времени/версии” таблиц/регионов, чтобы понимать:
+	•	“не протух ли query cache после изменений данных?”
+Если кто-то обновил/вставил сущность — timestamps меняется, и Hibernate инвалидирует результаты query cache, чтобы не отдавать устаревшее.
+
+Почему “local” конфиг — норм для ЛР
+
+Потому что лабораторная не требует кластера и распределённого хранения. Тебе важно:
+	•	показать L2 cache реально работает
+	•	есть hits/miss
+	•	есть query/timestamps регионы
+	•	всё стабильно на одном сервере
+========================================================================================================================
+JPA entity
+
+@Cacheable                                              эту сущность можно кэшировать во втором уровне
+@Cache(usage = CacheConcurrencyStrategy.READ_WRITE)     Hibernate-специфичное: как именно кэшировать -
+                                                        READ_WRITE
+                                                        	•	безопасный режим для сущностей, которые могут обновляться
+                                                        	•	использует механизм согласованности (soft locks / versioning)
+                                                        	•	гарантирует консистентность: если один поток обновил — другие не получат старое.
+                                                        Если бы ты поставил READ_ONLY — то обновления привели бы к проблемам (нужно только если данные реально неизменяемые).
+                                                        NONSTRICT_READ_WRITE — быстрее, но может отдавать чуть устаревшее.
+                                                        Ты выбрал READ_WRITE, это “правильный дефолт”, потому что почти все сущности в CRUD обновляются.
+========================================================================================================================
+@ApplicationScoped
+public class L2CacheStatsToggle {
+    private final AtomicBoolean enabled =
+            new AtomicBoolean(Boolean.getBoolean("l2cache.stats.enabled"));
+}
+•	создал CDI-бин на всё приложение (@ApplicationScoped)
+•	хранится флаг “логировать или нет”
+•	стартовое значение берёшь из system property:
+•	если ты запускаешь JVM с -Dl2cache.stats.enabled=true, то включится
+Почему AtomicBoolean:
+	•	безопасно для потоков (у тебя много запросов одновременно)
+	•	можно менять флаг на лету (например через админский endpoint)
+========================================================================================================================
+@InterceptorBinding
+@Target({ElementType.TYPE, ElementType.METHOD})
+@Retention(RetentionPolicy.RUNTIME)
+public @interface L2CacheStats {}
+
+@InterceptorBinding — как CDI понимает, куда применять интерцептор
+Это “метка”, которую ты можешь поставить:
+	•	на класс сервиса
+	•	или на конкретный метод
+Пример:
+@L2CacheStats над VehicleService → все методы логируются
+или только @L2CacheStats над getVehicleById() → только он
+========================================================================================================================
+@ApplicationScoped
+public class HibernateStatsService {
+    @PersistenceUnit
+    EntityManagerFactory emf;
+    public Statistics stats() {
+        SessionFactory sf = emf.unwrap(SessionFactory.class);
+        Statistics st = sf.getStatistics();
+        if (!st.isStatisticsEnabled()) {
+            st.setStatisticsEnabled(true);
+        }
+        return st;
+    }
+}
+Как это работает:
+	•	JPA даёт тебе EntityManagerFactory
+	•	Hibernate — это провайдер, поэтому emf.unwrap(SessionFactory.class) возвращает внутренний Hibernate SessionFactory
+	•	у SessionFactory есть Statistics
+	•	ты включаешь статистику, если вдруг она выключена (доп. надежность)
+========================================================================================================================
+@L2CacheStats
+// ^ interceptor binding: этот интерцептор сработает только на методах/классах,
+//   где ты поставил @L2CacheStats
+@Interceptor
+// ^ говорит CDI: это интерцептор
+@Priority(Interceptor.Priority.APPLICATION + 50)
+// ^ включает интерцептор и задаёт порядок выполнения среди других интерцепторов
+public class L2CacheStatsInterceptor {
+
+    private static final Logger log =
+            Logger.getLogger(L2CacheStatsInterceptor.class.getName());
+    // ^ логгер (пишет в логи TomEE)
+
+    @Inject
+    L2CacheStatsToggle toggle;
+    // ^ переключатель: включено/выключено логирование статистики
+    //   (чтобы можно было динамически убрать overhead)
+
+    @Inject
+    HibernateStatsService statsService;
+    // ^ сервис, который вытаскивает Hibernate Statistics из SessionFactory
+
+    @AroundInvoke
+    public Object around(InvocationContext ctx) throws Exception {
+        // ^ AroundInvoke перехватывает вызов метода
+        //   ctx содержит target, method, params и главное ctx.proceed()
+
+        // Если статистика выключена — ничего не считаем, просто выполняем метод
+        if (!toggle.isEnabled()) {
+            return ctx.proceed();
+        }
+
+        // Достаём Hibernate Statistics (глобальные счетчики по приложению)
+        Statistics st;
+        try {
+            st = statsService.stats();
+        } catch (Exception e) {
+            // Если статистика недоступна — не ломаем бизнес-метод, просто пропускаем логирование
+            log.log(Level.WARNING, "L2 stats unavailable (no Hibernate SessionFactory?)", e);
+            return ctx.proceed();
+        }
+
+        // Снимаем значения ДО выполнения метода
+        long hitsBefore = st.getSecondLevelCacheHitCount();
+        // ^ сколько раз нашли данные в L2 cache (без похода в БД)
+        long missBefore = st.getSecondLevelCacheMissCount();
+        // ^ сколько раз L2 cache не помог (пришлось идти в БД)
+        long putsBefore = st.getSecondLevelCachePutCount();
+        // ^ сколько раз положили данные в L2 cache
+
+        // Выполняем реальный бизнес-метод
+        Object res = ctx.proceed();
+
+        // Снимаем значения ПОСЛЕ выполнения метода
+        long hitsAfter = st.getSecondLevelCacheHitCount();
+        long missAfter = st.getSecondLevelCacheMissCount();
+        long putsAfter = st.getSecondLevelCachePutCount();
+
+        // Дельта = вклад именно этого вызова метода
+        long dh = hitsAfter - hitsBefore;
+        long dm = missAfter - missBefore;
+        long dp = putsAfter - putsBefore;
+
+        // Логируем только если было изменение, чтобы не спамить лог
+        if (dh != 0 || dm != 0 || dp != 0) {
+            log.info(() ->
+                    "[L2] " + ctx.getMethod() +
+                    ": hits +" + dh +
+                    ", miss +" + dm +
+                    ", puts +" + dp
+            );
+        }
+
+        // Возвращаем результат реального метода, поведение не меняем
+        return res;
+    }
+}
+========================================================================================================================
+
