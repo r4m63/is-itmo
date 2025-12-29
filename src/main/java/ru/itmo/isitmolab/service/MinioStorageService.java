@@ -17,14 +17,11 @@ public class MinioStorageService {
     private String endpoint;
     private String bucket;
 
-    // ленивый флаг
     private volatile boolean bucketReady = false;
     private final Object bucketLock = new Object();
 
     @PostConstruct
     public void init() {
-        // system props из скрипта: -Dminio.url, -Dminio.accessKey, -Dminio.secretKey, -Dstorage.importsBucket
-        // env fallback: MINIO_ENDPOINT, MINIO_ACCESS_KEY, MINIO_SECRET_KEY, MINIO_BUCKET
         this.endpoint = firstNonBlank(
                 System.getProperty("minio.url"),
                 System.getenv("MINIO_ENDPOINT"),
@@ -69,9 +66,6 @@ public class MinioStorageService {
         return (v == null || v.isBlank()) ? def : v;
     }
 
-    /**
-     * Ленивая проверка/создание bucket с retry.
-     */
     private void ensureBucket() {
         if (bucketReady) return;
 
@@ -161,7 +155,6 @@ public class MinioStorageService {
             ensureBucket();
             client.removeObject(RemoveObjectArgs.builder().bucket(bucket).object(objectKey).build());
         } catch (Exception ignored) {
-            // best-effort
         }
     }
 }
