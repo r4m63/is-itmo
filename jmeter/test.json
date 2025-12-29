@@ -1,6 +1,6 @@
 [
   {
-    "name": "1",
+    "name": "3",
     "type": "CAR",
     "enginePower": 181,
     "numberOfWheels": 4,
@@ -14,7 +14,21 @@
     }
   },
   {
-    "name": "2",
+    "name": "4",
+    "type": "MOTORCYCLE",
+    "enginePower": 95,
+    "numberOfWheels": 2,
+    "capacity": 2,
+    "distanceTravelled": 35000,
+    "fuelConsumption": 4.3,
+    "fuelType": "MANPOWER",
+    "coordinates": {
+      "x": 10.0,
+      "y": 15.0
+    }
+  },
+  {
+    "name": "5",
     "type": "MOTORCYCLE",
     "enginePower": 95,
     "numberOfWheels": 2,
