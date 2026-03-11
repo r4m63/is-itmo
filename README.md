@@ -1,120 +1,95 @@
-# Информационные системы. Лабораторная работа
+# IS ITMO Lab
 
-Вариант: 409664
+Учебная информационная система: веб‑админка для управления сущностями `Vehicle` и справочником `Coordinates`, выполнения спец‑запросов по БД и импорта данных из JSON с сохранением исходного файла в S3‑совместимом хранилище. Проект собран как Jakarta EE 11 приложение (`.war`) + отдельный фронтенд на React/Vite.
 
-> Каждая лабораторная работа находится в своей отдельной ветке: lab1, lab2, lab3, lab4
+## Зачем это нужно
+- CRUD по транспортным средствам и координатам с серверной пагинацией/фильтрацией.
+- Встроенные «пресеты» спец‑операций (мин. пробег, поиск по типу/диапазону мощности, fuelConsumption > X) выполняются через SQL‑функции в PostgreSQL.
+- Импорт JSON в один шаг: за одну транзакцию создаются сущности в БД и кладётся исходный файл в MinIO; при откате файл удаляется (двухфазный коммит через `TransactionSynchronizationRegistry`).
+- Реактивные обновления таблиц через WebSocket broadcast («refresh»).
+- История импортов с возможностью скачать исходный файл.
+- Безопасное удаление координат: при наличии связанных `Vehicle` предлагается переназначить их на другие координаты.
 
-## Технологический стек
+## Архитектура и стек
+**Backend (src/main/java)**
+- Jakarta EE 11: JAX‑RS (REST API), CDI, Bean Validation, WebSocket.
+- JPA/Hibernate 6.6 + Infinispan L2 cache (`infinispan-config-local.xml`, аннотация `@L2CacheStats` логирует хиты при включённом `-Dl2cache.stats.enabled=true`).
+- PostgreSQL 16 (SQL схему и функции см. `sql/init.sql`).
+- MinIO S3 для хранения файлов импорта (`MinioStorageService`).
+- Двухфазный сценарий импорта: `VehicleImportTxService` регистрирует синхронизацию транзакции, сначала пишет в БД, затем в `beforeCompletion` грузит файл в MinIO; в `afterCompletion` фиксирует статус и чистит объект при rollback.
+- WebSocket хаб `VehicleWsService` + endpoint `/ws/vehicles` рассылает событие `refresh` после CRUD/импорта.
 
-[![Java](https://img.shields.io/badge/Java-17-blue?logo=openjdk&style=flat-square)](https://adoptium.net/)
-[![Jakarta EE](https://img.shields.io/badge/Jakarta%20EE-11-blue?logo=jakartaee&style=flat-square)](https://jakarta.ee/)
-[![WildFly](https://img.shields.io/badge/WildFly-37.0.1.Final-blue?logo=wildfly&style=flat-square)](https://www.wildfly.org/)
+**Frontend (frontend/)**
+- React 19 + Vite 7, HeroUI, AG Grid (Infinite Row Model + серверные фильтры/сортировки), Sonner уведомления.
+- Две страницы: `MainPage` (Vehicles) и `CoordinatesPage` (справочник). Модалки для создания/редактирования, import JSON, пресеты, история, выбор координат.
+- API base настраивается в `frontend/cfg.js` (`API_BASE`).
 
-[![JavaScript](https://img.shields.io/badge/JavaScript-ES262-blue?logo=javascript&style=flat-square)](https://developer.mozilla.org/docs/Web/JavaScript)
-[![React](https://img.shields.io/badge/React-19.1-blue?logo=react&style=flat-square)](https://react.dev/)
+**Инфраструктура**
+- `docker-compose.yml` поднимает PostgreSQL и MinIO.
+- Сборка backend: Gradle 8+, Java 17 (`./gradlew build` → `build/libs/app.war`).
+- Деплой war на совместимый сервер приложений (WildFly / TomEE). `persistence.xml` ожидает JTA datasource `java:openejb/Resource/jdbc/MyDS` + необязательный non‑JTA (`MyDSUnmanaged`).
 
-[![Apache httpd](https://img.shields.io/badge/Apache%20httpd-2.4.62-blue?logo=apache&logoColor=white&style=flat-square)](https://httpd.apache.org/)
+## Основные возможности
+- Таблицы Vehicle/Coordinates с бесконечной прокруткой, сортировкой и фильтрами, выполняемыми на сервере (`GridTableRequest` → `GridTablePredicateBuilder`).
+- CRUD с валидацией Bean Validation и оптимистичной версией (`@Version`).
+- Спец‑операции через SQL‑функции (`fn_vehicle_min_distance`, `fn_vehicle_count_fuel_gt`, `fn_vehicle_list_fuel_gt`, `fn_vehicle_list_by_type`, `fn_vehicle_list_engine_between`) и отдельный REST (`/api/vehicle/special/*`).
+- Импорт JSON массива `VehicleImportItemDto`: валидация до начала транзакции; логирование в `vehicle_import_operation`; файл кладётся в MinIO только при успешном коммите; история доступна по `/api/vehicle/import/history` и файл по `/api/vehicle/import/history/{id}/file`.
+- История показывает статус, количество созданных записей, ссылку на исходный файл (если загрузка в MinIO прошла успешно).
+- Удаление координат с проверкой внешних ключей: при конфликте возвращается 409 и фронт предлагает переназначить все связанные `Vehicle` на выбранные координаты (`/api/coordinates/{id}?reassignTo=...`).
+- Кросс‑доменные запросы для локальной разработки настроены в `CorsFilter` (Origin whitelist `localhost:5173`, `localhost:22821`).
 
-## Задание
+## Структура репозитория
+- `src/main/java/ru/itmo/isitmolab` — backend (контроллеры, сервисы, DAO, DTO, WebSocket, утилиты, исключения).
+- `src/main/resources` — `persistence.xml`, `beans.xml`, конфиг Infinispan.
+- `src/main/webapp/WEB-INF/web.xml` — базовый web.xml.
+- `sql/` — скрипты инициализации/сидов/миграций (`init.sql`, `seed_vehicle.sql`, `destroy.sql`, `migrate_add_import_file_columns.sql`).
+- `frontend/` — исходники SPA, Vite конфиг, Tailwind 4, HeroUI, AG Grid.
+- `docker-compose.yml` — PostgreSQL + MinIO.
 
-Реализовать информационную систему, которая позволяет взаимодействовать с объектами класса Vehicle, описание которого
-приведено ниже:
+## Быстрый старт локально
+1) **Поднять БД и MinIO**
+```bash
+docker compose up -d
+```
+Переменные для compose: `DB_NAME`, `DB_USER`, `DB_PASS`, `MINIO_ACCESS_KEY`, `MINIO_SECRET_KEY` (по умолчанию minioadmin/minioadmin). Консоль MinIO: http://localhost:9001.
 
-```java
-public class Vehicle {
-    private Long id; //Поле не может быть null, Значение поля должно быть больше 0, Значение этого поля должно быть уникальным, Значение этого поля должно генерироваться автоматически
-    private String name; //Поле не может быть null, Строка не может быть пустой
-    private Coordinates coordinates; //Поле не может быть null
-    private java.util.Date creationDate; //Поле не может быть null, Значение этого поля должно генерироваться автоматически
-    private VehicleType type; //Поле не может быть null
-    private Integer enginePower; //Поле может быть null, Значение поля должно быть больше 0
-    private int numberOfWheels; //Значение поля должно быть больше 0
-    private Integer capacity; //Поле может быть null, Значение поля должно быть больше 0
-    private Integer distanceTravelled; //Поле может быть null, Значение поля должно быть больше 0
-    private float fuelConsumption; //Значение поля должно быть больше 0
-    private FuelType fuelType; //Поле не может быть null
-}
-
-public class Coordinates {
-    private double x; //Максимальное значение поля: 613
-    private Float y; //Максимальное значение поля: 962, Поле не может быть null
-}
-
-public enum VehicleType {
-    CAR,
-    HELICOPTER,
-    MOTORCYCLE,
-    CHOPPER
-}
-
-public enum FuelType {
-    KEROSENE,
-    MANPOWER,
-    NUCLEAR
-}
+2) **Инициализировать схему**
+```bash
+psql postgresql://$DB_USER:$DB_PASS@localhost:5432/$DB_NAME -f sql/init.sql
+# необязательно: psql ... -f sql/seed_vehicle.sql
 ```
 
-Разработанная система должна удовлетворять следующим требованиям:
+3) **Собрать backend**
+```bash
+./gradlew clean build
+# артефакт: build/libs/app.war
+```
+Настройте JTA datasource с JNDI `java:openejb/Resource/jdbc/MyDS` на вашем сервере приложений и задеплойте `app.war` (WildFly/TomEE/Jakarta EE 11 совместимый). Hibernate L2 cache включён, статистика по хиту — `-Dl2cache.stats.enabled=true`.
 
-- Основное назначение информационной системы - управление объектами, созданными на основе заданного в варианте класса.
-- Необходимо, чтобы с помощью системы можно было выполнить следующие операции с объектами: создание нового объекта,
-  получение информации об объекте по ИД, обновление объекта (модификация его атрибутов), удаление объекта. Операции
-  должны осуществляться в отдельных окнах (интерфейсах) приложения.При получении информации об объекте класса должна
-  также выводиться информация о связанных с ним объектах.
-- При создании объекта класса необходимо дать пользователю возможность связать новый объект с объектами вспомогательных
-  классов, которые могут быть связаны с созданным объектом и уже есть в системе.
-- Выполнение операций по управлению объектами должно осуществляться на серверной части (не на клиенте), изменения должны
-  синхронизироваться с базой данных.
-- На главном экране системы должен выводиться список текущих объетов в виде таблицы (каждый атрибут объекта - отдельная
-  колонка в таблице). При отображении таблицы должна использоваться пагинация (если все объекты не помещаются на одном
-  экране).
-- Нужно обеспечить возможность фильтровать/сортировать строки таблицы, которые показывают объекты (по значениям любой из
-  строковых колонок). Фильтрация элементов должна производиться по неполному совпадению.
-- Переход к обновлению (модификации) объекта должен быть возможен из таблицы с общим списком объектов и из области с
-  визуализацией объекта (при ее реализации).
-- При добавлении/удалении/изменении объекта, он должен автоматически появиться/исчезнуть/измениться в интерфейсах у
-  других пользователей, авторизованных в системе.
-- Если при удалении объекта с ним связан другой объект, связанные объекты должны быть связаны с другим объектом (по
-  выбору пользователя), а изначальный объект удален.
-- Пользователи должны иметь возможность просмотра всех объектов. Для модификации объекта должно открываться отдельное
-  диалоговое окно. При вводе некорректных значений в поля объекта должны появляться информативные сообщения о
-  соответствующих ошибках.
+4) **Запустить фронтенд**
+```bash
+cd frontend
+npm install
+npm run dev  # по умолчанию http://localhost:5173
+```
+При необходимости поменяйте `API_BASE` в `frontend/cfg.js` на адрес backend (пример: `http://localhost:8080/app`). Для продакшн‑сборки: `npm run build` → содержимое `frontend/dist` можно раздать nginx/httpd.
 
-В системе должен быть реализован отдельный пользовательский интерфейс для выполнения специальных операций над объектами:
+5) **Проверка**
+- Откройте фронт, создайте Coordinates, затем Vehicle.
+- Откройте два окна: при добавлении/редактировании должна прилетать команда `refresh` через WebSocket и таблица обновится.
+- Импортируйте JSON (массив объектов `VehicleImportItemDto` с полями name, type, numberOfWheels, fuelConsumption, fuelType, coordinatesId, опциональными enginePower/capacity/distanceTravelled). История должна показать статус и дать скачать файл из MinIO.
 
-- Вернуть один (любой) объект, значение поля distanceTravelled которого является минимальным.
-- Вернуть количество объектов, значение поля fuelConsumption которых больше заданного.
-- Вернуть массив объектов, значение поля fuelConsumption которых больше заданного.
-- Найти все транспортные средства заданного типа.
-- Найти все транспортные средства с мощностью двигателя в заданном диапазоне.
-
-Представленные операции должны быть реализованы в качестве функций БД, которые необходимо вызывать из уровня
-бизнес-логики приложения.
-
-Особенности хранения объектов, которые должны быть реализованы в системе:
-
-- Организовать хранение данных об объектах в реляционной СУБД (PostgreSQL). Каждый объект, с которым работает ИС, должен
-  быть сохранен в базе данных.
-- Все требования к полям класса (указанные в виде комментариев к описанию классов) должны быть выполнены на уровне ORM и
-  БД.
-- Для генерации поля id использовать средства базы данных.
-- Для подключения к БД на кафедральном сервере использовать хост pg, имя базы данных - studs, имя пользователя/пароль
-  совпадают с таковыми для подключения к серверу.
-
-При создании системы нужно учитывать следующие особенности организации взаимодействия с пользователем:
-
-- Система должна реагировать на некорректный пользовательский ввод, ограничивая ввод недопустимых значений и информируя
-  пользователей о причине ошибки.
-- Переходы между различными логически обособленными частями системы должны осуществляться с помощью меню.
-- При добавлении/удалении/изменении объекта, он должен автоматически появиться/исчезнуть/измениться на области у всех
-  других клиентов.
-
-При разработке ИС должны учитываться следующие требования:
-
-- В качестве основы для реализации ИС необходимо использовать Java EE, Managed Beans.
-- Для создания уровня хранения необходимо использовать JPA + Hibernate.
-- Разные уровни приложения должны быть отделены друг от друга, разные логические части ИС должны находиться в отдельных
-  компонентах.
-
-## Как запустить
-
+## API
+- `POST /api/vehicle` — создать Vehicle.
+- `PUT /api/vehicle/{id}` — обновить.
+- `DELETE /api/vehicle/{id}` — удалить.
+- `GET /api/vehicle/{id}` — получить DTO.
+- `POST /api/vehicle/query` — серверная таблица (body `GridTableRequest`).
+- `POST /api/vehicle/import` — импорт JSON; заголовок `X-Filename` сохраняется в истории.
+- `GET /api/vehicle/import/history[?limit=N]` — последние операции.
+- `GET /api/vehicle/import/history/{id}/file` — скачать исходный файл из MinIO.
+- `GET /api/vehicle/special/min-distance` | `count-fuel-gt` | `list-fuel-gt` | `by-type` | `by-engine-range` — спец‑запросы через SQL‑функции.
+- `POST /api/coordinates/query` — таблица координат.
+- `POST /api/coordinates` / `PUT /api/coordinates/{id}` / `DELETE /api/coordinates/{id}[?reassignTo=...]` — CRUD + переназначение.
+- `GET /api/coordinates/search?q=...` — поиск для автокомплита.
+- WebSocket: `/ws/vehicles` (broadcast `refresh`).
